@@ -439,21 +439,37 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     logging.info(f"Poll answer received: poll_id={pid}, user_id={uid}, options={ans.option_ids}")
     
+    found = False
     for cid, game in list(GROUP_GAMES.items()):
         if pid in game["poll_map"]:
+            found = True
             poll_info = game["poll_map"][pid]
             correct_idx = poll_info["correct_idx"]
             question_idx = poll_info["question_index"]
             
-            if uid in game["user_answers"]:
-                # Store the user's answer for this question
-                game["user_answers"][uid][question_idx] = {
-                    "selected": ans.option_ids,
-                    "correct_idx": correct_idx,
-                    "timestamp": datetime.now()
-                }
-                
-                logging.info(f"Stored answer for user {uid}: {ans.option_ids} (correct: {correct_idx})")
+            logging.info(f"Found poll in chat {cid}, checking user {uid}")
+            logging.info(f"Joined users: {list(game['joined_users'].keys())}")
+            
+            # Initialize if user hasn't answered before (they must be in joined_users)
+            if uid not in game["user_answers"]:
+                if uid in game["joined_users"]:
+                    game["user_answers"][uid] = {}
+                    logging.info(f"Initialized user_answers for user {uid}")
+                else:
+                    logging.warning(f"User {uid} not in joined_users, skipping")
+                    continue
+            
+            # Store the user's answer for this question
+            game["user_answers"][uid][question_idx] = {
+                "selected": ans.option_ids,
+                "correct_idx": correct_idx,
+                "timestamp": datetime.now()
+            }
+            
+            logging.info(f"✅ Stored answer for user {uid}: {ans.option_ids} (correct: {correct_idx})")
+    
+    if not found:
+        logging.warning(f"Poll {pid} not found in any active game")
 
 async def compile_group_leaderboard(chat_id, context):
     """Calculate final leaderboard based on tracked answers"""
@@ -475,11 +491,15 @@ async def compile_group_leaderboard(chat_id, context):
         correct_idx = options.index(correct_ans)
         correct_answers[idx] = correct_idx
     
+    logging.info(f"Total questions: {len(questions)}, Correct answers: {correct_answers}")
+    
     # Calculate scores based on tracked answers
     final_scores = {}
     for uid, user_answers in game["user_answers"].items():
         score = 0
         total_time = 0.0
+        
+        logging.info(f"User {uid}: {len(user_answers)} answers recorded")
         
         # Only count users who actually answered questions
         if not user_answers:
@@ -491,7 +511,7 @@ async def compile_group_leaderboard(chat_id, context):
             selected_idx = answer_data["selected"][0] if answer_data["selected"] else -1
             correct_idx = correct_answers.get(question_idx, -1)
             
-            logging.info(f"User {uid}: Selected {selected_idx}, Correct {correct_idx} for question {question_idx}")
+            logging.info(f"User {uid}: Q{question_idx} - Selected {selected_idx}, Correct {correct_idx}")
             
             if selected_idx == correct_idx:
                 score += 1
@@ -502,32 +522,32 @@ async def compile_group_leaderboard(chat_id, context):
                     total_time += elapsed
         
         final_scores[uid] = {"score": score, "total_time": total_time}
+        logging.info(f"User {uid} final: {score} correct, {total_time} sec total")
     
     logging.info(f"Final scores for chat {chat_id}: {final_scores}")
-    
-    # Update game scores with calculated scores
-    for uid, score_data in final_scores.items():
-        game["scores"][uid] = score_data
     
     # Sort by score desc, then total_time asc - ONLY INCLUDE USERS WITH SCORES
     sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:20]
     board = "🏆 FINAL QUIZ LEADERBOARD (Top 20) 🏆\n\n"
     
     if not sorted_scores:
-        board += "कोई भी user successfully participate नहीं कर सका। 🤷‍♂️"
+        board += "❌ कोई भी user successfully participate नहीं कर सका। 🤷‍♂️\n"
+        board += f"Total users joined: {len(game['joined_users'])}\n"
+        board += f"Users with answers: {len(game['user_answers'])}"
         kb = []
     else:
+        total_q = len(questions)
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_obj = game["joined_users"].get(uid, "User")
             score = meta["score"]
-            total_time = round(meta["total_time"], 1)
+            total_time = round(meta["total_time"], 2)
             
             if idx == 1: medal = "🥇"
             elif idx == 2: medal = "🥈"
             elif idx == 3: medal = "🥉"
             else: medal = f"{idx}."
                 
-            board += f"{medal} {user_obj} — ⭐ {score} Sahi (⏱ {total_time} sec)\n"
+            board += f"{medal} {user_obj} — ⭐ {score}/{total_q} Sahi (⏱ {total_time} sec)\n"
             
         share_text = f"Maine Laado Quiz Bot me participate kiya aur top players me rank banayi! 🔥"
         kb = [[InlineKeyboardButton("📢 Share Score / Results", url=f"https://t.me/share/url?url={share_text}")]]
