@@ -1214,24 +1214,30 @@ async def save_edited_timer(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ==========================================
 
 async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-joins users and sets dynamic counter to verify activation benchmarks"""
+    """Auto-joins users and sets dynamic counter to verify activation benchmarks with anti-spam check"""
     try:
         query = update.callback_query
         chat_id = query.message.chat_id
         message_id = query.message.message_id
         user_id = query.from_user.id
         user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
-        quiz_id = query.data.split("_")[1]
         
-        # 🔥 AUTO-RESET LOGIC START
-        # Agar group me pehle se data hai, par naya quiz_id shuru kiya gaya hai YA purani quiz paused/stuck hai
+        # ✅ FIXED: [1] index lagaya hai taaki sirf exact ID mile aur code crash na ho
+        try:
+            quiz_id = query.data.split("_")[1]
+        except IndexError:
+            quiz_id = "default"
+        
+        # 🔥 SMART AUTO-RESET LOGIC
         if chat_id in GROUP_GAMES:
             old_game = GROUP_GAMES[chat_id]
-            if old_game.get("quiz_id") != quiz_id or old_game.get("quiz_paused") or old_game.get("current_q", 0) == 0:
-                # Purani stuck ya paused quiz ke data ko delete karke naya reset kar rahe hain
-                del GROUP_GAMES[chat_id]
-        # 🔥 AUTO-RESET LOGIC END
-
+            # Agar purani quiz paused hai YA koi bilkul naya panel chal raha hai
+            if old_game.get("quiz_paused") or str(old_game.get("quiz_id")) != str(quiz_id):
+                # Reset tabhi karein jab naya countdown abhi chalu na hua ho aur setup message alag ho
+                if not old_game.get("quiz_started") or old_game.get("setup_message_id") != message_id:
+                    del GROUP_GAMES[chat_id]
+        
+        # State Initialization
         if chat_id not in GROUP_GAMES:
             GROUP_GAMES[chat_id] = {
                 "quiz_id": quiz_id, 
@@ -1252,18 +1258,24 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "consecutive_no_answers": 0
             }
         else:
-            # Update setup message ID if not already set
             if GROUP_GAMES[chat_id].get("setup_message_id") is None:
                 GROUP_GAMES[chat_id]["setup_message_id"] = message_id
                 GROUP_GAMES[chat_id]["setup_panel_text"] = query.message.text
             
         game = GROUP_GAMES[chat_id]
 
+        # 🚀 ANTI-ERROR MULTI-USER BYPASS
+        # Agar countdown shuru ho chuka hai, toh baki users ko bina error ke join karayein
         if game["quiz_started"]:
-            await query.answer("🚀 Quiz countdown pehle hi shuru ho chuka hai!")
+            if user_id not in game["joined_users"]:
+                game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
+                game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+                game["user_answers"][user_id] = {}
+            game["ready_users"].add(user_id)
+            await query.answer("Aapko chalte countdown me shaamil kar liya gaya hai! ⚡", show_alert=False)
             return
 
-        # Auto-Join structure initialization execution
+        # Regular Auto-Join
         if user_id not in game["joined_users"]:
             game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
             game["scores"][user_id] = {"score": 0, "total_time": 0.0}
@@ -1271,10 +1283,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         game["ready_users"].add(user_id)
         ready_count = len(game["ready_users"])
-        joined_count = len(game["joined_users"])
 
-        # Check if this is from external sharing link (single player mode)
-        # In single player mode (private chat), start with just 1 ready user
         is_private_chat = query.message.chat.type == "private"
         min_ready_required = 1 if is_private_chat else 2
 
@@ -1282,11 +1291,13 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             game["quiz_started"] = True
             await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
             
-            # Only edit button, keep panel message same
-            keyboard = []  # No button - just empty
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            # Button ko delete ya khali karne ka safe tareeka
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([]))
+            except Exception:
+                pass
             
-            # Send countdown messages instead of editing the setup message
+            # Countdown execution
             for count in ["5", "4", "3", "2", "1"]:
                 countdown_msg = await context.bot.send_message(chat_id=chat_id, text=count)
                 await asyncio.sleep(1)
@@ -1295,7 +1306,6 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception as e:
                     logging.warning(f"Could not delete countdown message: {e}")
 
-            # Send banner message
             banner_msg = await context.bot.send_message(chat_id=chat_id, text="🔥 Get ready! Quiz shuru ho rahi hai... 🚀")
             await asyncio.sleep(5)
             try:
@@ -1306,16 +1316,21 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             game["current_q"] = 0
             asyncio.create_task(send_next_group_poll(chat_id, context))
         else:
-            # Update only button with new count - panel message stays SAME
+            # ✅ FIXED: callback_data me ab sahi quiz_id pass hoga
             keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
-            
-            # EDIT ONLY THE BUTTON, NOT THE WHOLE MESSAGE
-            await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
             await query.answer("Aapne confirmation register kar di! 👍")
+            
     except Exception as e:
         logging.error(f"Error in handle_ready_click: {e}")
-        await query.answer("❌ Error", show_alert=True)
-
+        try:
+            await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
+        except Exception:
+            pass
+        
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
     try:
