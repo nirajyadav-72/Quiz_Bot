@@ -1223,6 +1223,15 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
         quiz_id = query.data.split("_")[1]
         
+        # 🔥 AUTO-RESET LOGIC START
+        # Agar group me pehle se data hai, par naya quiz_id shuru kiya gaya hai YA purani quiz paused/stuck hai
+        if chat_id in GROUP_GAMES:
+            old_game = GROUP_GAMES[chat_id]
+            if old_game.get("quiz_id") != quiz_id or old_game.get("quiz_paused") or old_game.get("current_q", 0) == 0:
+                # Purani stuck ya paused quiz ke data ko delete karke naya reset kar rahe hain
+                del GROUP_GAMES[chat_id]
+        # 🔥 AUTO-RESET LOGIC END
+
         if chat_id not in GROUP_GAMES:
             GROUP_GAMES[chat_id] = {
                 "quiz_id": quiz_id, 
