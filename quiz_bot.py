@@ -1657,7 +1657,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
 
 
- async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Returns to the original main greeting menu"""
     try:
         query = update.callback_query
