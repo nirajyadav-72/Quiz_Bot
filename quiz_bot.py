@@ -10,6 +10,7 @@ from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, ConversationHandler, CallbackQueryHandler, PollAnswerHandler
 )
+from telegram.request import HTTPXRequest
 
 # Enable Logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
