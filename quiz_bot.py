@@ -1652,11 +1652,15 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         logging.error(f"Error in cancel: {e}")
         return ConversationHandler.END
 
-async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Returns to the original main greeting menu"""
     try:
         query = update.callback_query
+        
+        # ✅ FIXED: edit_message_text se pehle answer lagaya hai timeout se bachne ke liye
         await query.answer()
+        
         welcome_text = (
             "👋 Welcome to Premium Quiz Bot!\n\n"
             "Aap is bot se quizzes bana kar apne dosto ke sath groups me realtime khel sakte hain.\n\n"
@@ -1669,12 +1673,22 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
-        # Purane message ko inline buttons ke sath edit karein
-        await query.edit_message_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+        # ✅ FIXED: UI update me explicit local timeout apply kiya hai
+        await query.edit_message_text(
+            welcome_text, 
+            reply_markup=InlineKeyboardMarkup(keyboard), 
+            parse_mode="Markdown",
+            read_timeout=20,
+            write_timeout=20
+        )
         
     except Exception as e:
         logging.error(f"Error in handle_back_main: {e}")
-        await query.answer("❌ Error", show_alert=True)
+        try:
+            await query.answer("❌ Error", show_alert=True)
+        except Exception:
+            pass
 
 def main():
     if not BOT_TOKEN:
@@ -1682,7 +1696,23 @@ def main():
         return
     
     try:
-        app = Application.builder().token(BOT_TOKEN).build()
+        # 🔥 GLOBAL TIMEOUT FIX: Dynamic HTTPXRequest context initialization
+        # Isse quiz creation ke dauraan hone wali deri (delay) ko bot handle kar lega
+        request_config = HTTPXRequest(
+            connect_timeout=35.0,  # Max connection hold time
+            read_timeout=35.0,     # Max wait time for incoming operations
+            write_timeout=35.0     # Max delivery buffer time
+        )
+        
+        # ✅ SYNTAX FIXED: Commas ko hata diya hai taaki valid python object chain bane
+        app = (
+            Application.builder()
+            .token(BOT_TOKEN)
+            .request(request_config)
+            .get_updates_read_timeout(45.0)   # Fixed methods call syntax
+            .get_updates_write_timeout(45.0)  # Fixed methods call syntax
+            .build()
+        )
         
         # 🔁 COMPREHENSIVE DUAL CONVERSATION ROUTER MAPS (Creation + Live Editing)
         new_quiz_handler = ConversationHandler(
@@ -1756,3 +1786,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+        
