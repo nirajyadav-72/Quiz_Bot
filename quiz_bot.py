@@ -1700,21 +1700,18 @@ def main():
         return
     
     try:
-        # 🔥 GLOBAL TIMEOUT FIX: Dynamic HTTPXRequest context initialization
-        # Isse quiz creation ke dauraan hone wali deri (delay) ko bot handle kar lega
+                # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
         request_config = HTTPXRequest(
             connect_timeout=35.0,  # Max connection hold time
-            read_timeout=35.0,     # Max wait time for incoming operations
+            read_timeout=45.0,     # Max wait time for incoming operations
             write_timeout=35.0     # Max delivery buffer time
         )
         
-        # ✅ SYNTAX FIXED: Commas ko hata diya hai taaki valid python object chain bane
+        # ✅ SYNTAX & CONFIG FIXED: Builder se dot(.) wale extra timeouts hata diye hain
         app = (
             Application.builder()
             .token(BOT_TOKEN)
             .request(request_config)
-            .get_updates_read_timeout(45.0)   # Fixed methods call syntax
-            .get_updates_write_timeout(45.0)  # Fixed methods call syntax
             .build()
         )
         
