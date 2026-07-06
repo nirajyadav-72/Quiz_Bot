@@ -2017,8 +2017,7 @@ async def main():
         app.add_handler(PollAnswerHandler(track_poll_answers))
         app.add_handler(InlineQueryHandler(inline_query_handler))
         
-        while True:
-        await asyncio.sleep(1)
+        await asyncio.Event().wait()
 
 if __name__ == '__main__':
     # 3. सीधे main() चलाने के बजाय asyncio का इस्तेमाल करें
