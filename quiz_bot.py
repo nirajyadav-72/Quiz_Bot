@@ -8,12 +8,12 @@ from dotenv import load_dotenv
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, 
     KeyboardButton, KeyboardButtonPollType, ReplyKeyboardMarkup,
-    InlineQueryResultArticle, InputTextMessageContent  # <-- ये दोनों यहाँ जोड़े
+    InlineQueryResultArticle, InputTextMessageContent  
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, ConversationHandler, CallbackQueryHandler, PollAnswerHandler,
-    InlineQueryHandler  # <-- इसे यहाँ जोड़े
+    InlineQueryHandler  
 )
 from telegram.request import HTTPXRequest
 
@@ -76,6 +76,10 @@ def init_db():
                 FOREIGN KEY(quiz_id) REFERENCES quizzes(quiz_id)
             )
         """)
+        # 🔥 FIXED: Broadcast ki missing tables yahan jod di hain
+        cursor.execute("CREATE TABLE IF NOT EXISTS broadcast_users (chat_id INTEGER PRIMARY KEY)")
+        cursor.execute("CREATE TABLE IF NOT EXISTS broadcast_groups (chat_id INTEGER PRIMARY KEY)")
+        
         conn.commit()
         conn.close()
         logging.info("Database initialized successfully")
@@ -90,7 +94,6 @@ def check_active_quiz_creation(user_id, context):
 
 async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        # Check if interaction is via callback button or command
         msg_obj = update.callback_query.message if update.callback_query else update.message
         user_id = update.callback_query.from_user.id if update.callback_query else update.message.from_user.id
         
@@ -109,6 +112,7 @@ async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("❌ An error occurred. Please try again with /newquiz")
         return ConversationHandler.END
 
+# start handler 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Broadcast ke liye Chat ID aur Type database me save karein
