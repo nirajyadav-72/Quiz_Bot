@@ -1841,6 +1841,75 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logging.error(f"Error in inline_query_handler: {e}")
 
+#broadcast command handler
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Broadcast command for owner to send text, media, or stickers safely"""
+    user_id = update.effective_user.id
+    
+    # Check karein ki user owner hai ya nahi
+    if OWNER_ID and user_id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf Bot Owner hi is command ka use kar sakta hai.")
+        return
+
+    # Check karein ki kisi message par reply kiya gaya hai ya nahi
+    if not update.message.reply_to_message:
+        await update.message.reply_text("❌ Kisi bhi text, photo, sticker ya media par reply karke `/broadcast` likhein.")
+        return
+
+    target_message = update.message.reply_to_message
+    status_msg = await update.message.reply_text("📢 **Quiz Bot Broadcast shuru ho raha hai...**")
+
+    # Database se active chats fetch karein
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT chat_id FROM broadcast_users")
+    users = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT chat_id FROM broadcast_groups")
+    groups = [row[0] for row in cursor.fetchall()]
+    conn.close()
+
+    success_users, failed_users = 0, 0
+    success_groups, failed_groups = 0, 0
+
+    # 1. Private Users ko bheinjein
+    for u_id in users:
+        try:
+            # copy_message sticker, media, text sab kuch original format me bina kisi tag ke bhejta hai
+            await context.bot.copy_message(
+                chat_id=u_id, 
+                from_chat_id=target_message.chat_id, 
+                message_id=target_message.message_id
+            )
+            success_users += 1
+            await asyncio.sleep(0.05)  # FloodWait se bachne ke liye chota delay
+        except Exception:
+            failed_users += 1
+
+    # 2. Groups ko bheinjein
+    for g_id in groups:
+        try:
+            await context.bot.copy_message(
+                chat_id=g_id, 
+                from_chat_id=target_message.chat_id, 
+                message_id=target_message.message_id
+            )
+            success_groups += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed_groups += 1
+
+    # Final Report card display karein
+    report = (
+        "📊 Quiz Bot Broadcast Report:\n\n"
+        "👤 Private Chats:\n"
+        f"✅ Success: {success_users}\n"
+        f"❌ Failed: {failed_users}\n\n"
+        "👥 Groups:\n"
+        f"✅ Success: {success_groups}\n"
+        f"❌ Failed: {failed_groups}"
+    )
+    await status_msg.edit_text(report)
+
 # =====================================================================
 
 
@@ -1923,6 +1992,7 @@ def main():
         app.add_handler(CallbackQueryHandler(handle_question_detail, pattern="^editq_"))
         app.add_handler(CallbackQueryHandler(handle_delete_question, pattern="^delq_"))
         app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
+        app.add_handler(CommandHandler("broadcast", broadcast_command))
         
         # 🔴 NEW: Quiz pause/resume handlers
         app.add_handler(CallbackQueryHandler(handle_pause_quiz, pattern="^pausequiz_"))
