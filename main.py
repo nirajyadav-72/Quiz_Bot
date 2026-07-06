@@ -1929,8 +1929,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # =====================================================================
 
-
-def main():
+async def main():
     if not BOT_TOKEN:
         logging.error("BOT_TOKEN not found in environment variables!")
         return
@@ -2018,11 +2017,9 @@ def main():
         app.add_handler(PollAnswerHandler(track_poll_answers))
         app.add_handler(InlineQueryHandler(inline_query_handler))
         
-        logging.info("🚀 Advanced Telegram Quiz-Bot UI Active...")
-        app.run_polling()
-    except Exception as e:
-        logging.error(f"Fatal error in main: {e}")
+        while True:
+        await asyncio.sleep(1)
 
-if __name__ == "__main__":
-    main()
-        
+if __name__ == '__main__':
+    # 3. सीधे main() चलाने के बजाय asyncio का इस्तेमाल करें
+    asyncio.run(main())
