@@ -111,7 +111,20 @@ async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Check for active quiz creation
+        # Broadcast ke liye Chat ID aur Type database me save karein
+        chat_id = update.message.chat.id
+        chat_type = update.message.chat.type
+
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        if chat_type == "private" or chat_type.value == "private":
+            cursor.execute("INSERT OR IGNORE INTO broadcast_users (chat_id) VALUES (?)", (chat_id,))
+        else:
+            cursor.execute("INSERT OR IGNORE INTO broadcast_groups (chat_id) VALUES (?)", (chat_id,))
+        conn.commit()
+        conn.close()
+
+        # Check for active quiz creation (Aapka pehle wala rules check)
         if check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
                 "⚠️ **You have an unfinished quiz.** Please finish creating your quiz or send /cancel.\n\n"
@@ -120,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         args = context.args
-        # Handle direct deep-linking tracking code
+        # Handle direct deep-linking tracking code (Link se quiz start hona)
         if args and len(args) > 0 and args[0].startswith("quiz_"):
             quiz_id = args[0].split("_")[1]
             
@@ -154,14 +167,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
 
-        # Normal private chat initialization layout
+        # Normal private chat initialization layout (Normal welcome message)
         welcome_text = (
             "👋 *Welcome to Premium Quiz Bot!*\n\n"
             "*Aap is bot se quizzes bana kar apne dosto ke sath groups me realtime khel sakte hain.*\n\n"
             "💡 *Check Available Commands:*\n"
             "➤ /help *– Open help center*\n\n"
             "👥 *Add the bot to a group and start quizzes*\n"
-            "📢 *For support, contact owner.*"
+            f"📢 *Owner Details:* ID `{OWNER_ID}`"
         )
         keyboard = [
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
