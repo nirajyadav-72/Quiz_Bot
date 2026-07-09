@@ -1865,10 +1865,16 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast command for owner to send text, media, or stickers safely"""
     user_id = update.effective_user.id
-    
-    # Check karein ki user owner hai ya nahi
+    chat_id = update.effective_chat.id  # Current Group ID check karne ke liye
+
+    # 1. Check karein ki user owner hai ya nahi
     if OWNER_ID and user_id != OWNER_ID:
         await update.message.reply_text("❌ Sirf Bot Owner hi is command ka use kar sakta hai.")
+        return
+
+    # 2. Check karein ki command .env wali specific Group ID me hi chalayi gayi hai
+    if SUPPORT_GROUP_ID and chat_id != SUPPORT_GROUP_ID:
+        await update.message.reply_text("❌ Ye command is group me allowed nahi hai.")
         return
 
     # Check karein ki kisi message par reply kiya gaya hai ya nahi
@@ -1929,7 +1935,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"❌ Failed: {failed_groups}"
     )
     await status_msg.edit_text(report)
-
+        
 # =====================================================================
 
 async def main():
