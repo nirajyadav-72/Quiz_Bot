@@ -1944,7 +1944,7 @@ async def main():
         return
     
     try:
-                # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
+        # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
         request_config = HTTPXRequest(
             connect_timeout=35.0,  # Max connection hold time
             read_timeout=45.0,     # Max wait time for incoming operations
@@ -2026,8 +2026,22 @@ async def main():
         app.add_handler(PollAnswerHandler(track_poll_answers))
         app.add_handler(InlineQueryHandler(inline_query_handler))
         
+        # 🚀 BOT RUN/POLLING INITIALIZATION
+        logging.info("Starting Quiz Bot polling...")
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        
+        # Bot ko running state me rakhne ke liye infinite event wait loop
         await asyncio.Event().wait()
 
+    # 🔥 FIXED syntax error: Open 'try' block ko yahan handle aur close kiya hai
+    except Exception as e:
+        logging.error(f"Critical error in main loop: {e}")
+
 if __name__ == '__main__':
-    # 3. सीधे main() चलाने के बजाय asyncio का इस्तेमाल करें
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot execution stopped clean.")
+        
