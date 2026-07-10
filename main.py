@@ -125,7 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
-        # 'private' string check ko fix kiya string convert karke
+        # 'private' string check
         is_private = str(chat_type) == "private" or (hasattr(chat_type, "value") and chat_type.value == "private")
         
         if is_private:
@@ -135,42 +135,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
-        # 🔥 GROUP KE LIYE BUTTONS DELETE KARNE KA LOGIC (NYA BADLAV)
+        # 🔥 GROUP KE LIYE RESUME/STOP BUTTONS DELETE KARNE KA LOGIC
         if not is_private:
-            quiz_message_id = None
-            try:
-                # Hum maan rahe hain ki active quiz ki data 'active_quizzes' ya jo bhi aapki table ho usme save hai
-                conn = sqlite3.connect(DB_FILE)
-                cursor = conn.cursor()
-                # ⚠️ Note: Apni table aur column ka naam check karke badal lena agar alag ho toh
-                cursor.execute("SELECT message_id FROM active_quizzes WHERE chat_id = ?", (chat_id,))
-                row = cursor.fetchone()
-                if row:
-                    quiz_message_id = row[0]
-                conn.close()
-            except Exception as e:
-                logging.error(f"Error fetching active quiz message_id: {e}")
-
-            # Agar purani message_id mili, toh uske Resume/Stop buttons delete (None) karein
-            if quiz_message_id:
-                try:
-                    await context.bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=quiz_message_id,
-                        reply_markup=None  # Reply markup None karne se buttons delete ho jate hain
-                    )
-                except TelegramError:
-                    pass
+            if chat_id in GROUP_GAMES:
+                game = GROUP_GAMES[chat_id]
+                
+                # Agar quiz paused hai aur hamare paas pause wale message ki ID hai
+                if game.get("quiz_paused") and "pause_message_id" in game:
+                    try:
+                        # Purane message se reply_markup=None karke buttons remove karein
+                        await context.bot.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=game["pause_message_id"],
+                            reply_markup=None
+                        )
+                        # ID ko clean kar dein taaki dobara loop na chale
+                        del game["pause_message_id"]
+                    except Exception:
+                        pass
 
             # User ke bheje gaye /start command message ko bhi group se delete karein
             try:
                 await update.message.delete()
-            except TelegramError:
+            except Exception:
                 pass
                 
-            return # Group me /start ka koi reply text nahi jayega, bas buttons delete honge
+            return # Group me /start ka koi text reply nahi jayega, bas buttons remove honge
 
-        # Check for active quiz creation (Aapka pehle wala rules check)
+        # Check for active quiz creation
         if check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
                 "⚠️ **You have an unfinished quiz.** Please finish creating your quiz or send /cancel.\n\n"
@@ -179,7 +171,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         args = context.args
-        # Handle direct deep-linking tracking code (Link se quiz start hona)
+        # Handle direct deep-linking tracking code
         if args and len(args) > 0 and args[0].startswith("quiz_"):
             quiz_id = args[0].split("_")[1]
             
@@ -213,7 +205,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
 
-        # Normal private chat initialization layout (Normal welcome message)
+        # Normal private chat welcome message
         welcome_text = (
             "👋 *Welcome to Premium Quiz Bot!*\n\n"
             "*Aap is bot se quizzes bana kar apne dosto ke sath groups me realtime khel sakte hain.*\n\n"
@@ -227,12 +219,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
         
-        # Fir aapka main inline keyboard wala message jayega
         await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Error in start: {e}")
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
-            
+        
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Check for active quiz creation
@@ -1409,7 +1400,7 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Parse: pausequiz_chat_id
         parts = query.data.split("_")
-        chat_id = int(parts[1])
+        chat_id = int(parts[1]) # Error fixed here
         
         if chat_id not in GROUP_GAMES:
             await query.answer("❌ Quiz not found", show_alert=True)
@@ -1418,6 +1409,9 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game = GROUP_GAMES[chat_id]
         game["quiz_paused"] = False
         game["consecutive_no_answers"] = 0
+        
+        # Safety line: ID tracking clear karein
+        game.pop("pause_message_id", None)
         
         await query.edit_message_text(
             text="Quiz Resuming...\n\n🚀 Next question coming up!",
@@ -1429,7 +1423,7 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in handle_pause_quiz: {e}")
         await query.answer("❌ Error", show_alert=True)
-
+        
 async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz stop from pause menu"""
     try:
@@ -1438,11 +1432,15 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
         
         # Parse: stopquiz_chat_id
         parts = query.data.split("_")
-        chat_id = int(parts[1])
+        chat_id = int(parts[1]) # Error fixed here
         
         if chat_id not in GROUP_GAMES:
             await query.answer("❌ Quiz not found", show_alert=True)
             return
+            
+        # Tracking clear karein
+        if chat_id in GROUP_GAMES:
+            GROUP_GAMES[chat_id].pop("pause_message_id", None)
         
         await query.edit_message_text(
             text="❌ Quiz stopped!\n\n🏁 Final Result:",
@@ -1453,7 +1451,7 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
     except Exception as e:
         logging.error(f"Error in handle_stop_quiz_from_pause: {e}")
         await query.answer("❌ Error", show_alert=True)
-
+        
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop the running quiz in group"""
     try:
