@@ -1934,3 +1934,111 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await status_msg.edit_text(report)
         
 # =====================================================================
+
+async def main():
+    if not BOT_TOKEN:
+        logging.error("BOT_TOKEN not found in environment variables!")
+        return
+    
+    try:
+        # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
+        request_config = HTTPXRequest(
+            connect_timeout=35.0,  # Max connection hold time
+            read_timeout=45.0,     # Max wait time for incoming operations
+            write_timeout=35.0     # Max delivery buffer time
+        )
+        
+        # ✅ SYNTAX & CONFIG FIXED: Builder se dot(.) wale extra timeouts hata diye hain
+        app = (
+            Application.builder()
+            .token(BOT_TOKEN)
+            .request(request_config)
+            .build()
+        )
+        
+        # 🔁 COMPREHENSIVE DUAL CONVERSATION ROUTER MAPS (Creation + Live Editing)
+        new_quiz_handler = ConversationHandler(
+            entry_points=[
+                CommandHandler("newquiz", new_quiz_start),
+                CallbackQueryHandler(new_quiz_start, pattern="^btn_newquiz$")
+            ],
+            states={
+                TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
+                DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
+                QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
+                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION | filters.POLL, receive_pre_message), CommandHandler("skip", receive_pre_message)],
+                TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
+            },
+            fallbacks=[CommandHandler("cancel", cancel)],
+        )
+
+        quiz_edit_flow_handler = ConversationHandler(
+            entry_points=[
+                CallbackQueryHandler(edit_title_trigger, pattern="^edtitle_"),
+                CallbackQueryHandler(edit_desc_trigger, pattern="^eddesc_"),
+                CallbackQueryHandler(edit_timer_trigger, pattern="^edtime_"),
+                CallbackQueryHandler(edit_pre_message_trigger, pattern="^editpre_"),
+                CallbackQueryHandler(edit_explanation_trigger, pattern="^editexpl_")
+            ],
+            states={
+                EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_title)],
+                EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_desc)],
+                EDIT_TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_timer)],
+                EDIT_QUESTION_PRE_MESSAGE: [MessageHandler(filters.TEXT, save_pre_message)],
+                EDIT_QUESTION_EXPLANATION: [MessageHandler(filters.TEXT, save_explanation)]
+            },
+            fallbacks=[CommandHandler("cancel", cancel)]
+        )
+        
+        # Registering core structures hooks
+        app.add_handler(CommandHandler("start", start))
+        app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(CommandHandler("quizzes", quizzes_command))
+        app.add_handler(CommandHandler("stop", stop_quiz))
+        
+        app.add_handler(new_quiz_handler)
+        app.add_handler(quiz_edit_flow_handler)
+
+        # Core system triggers binding maps
+        app.add_handler(CallbackQueryHandler(view_my_quizzes, pattern="^btn_viewquizzes$"))
+        app.add_handler(CallbackQueryHandler(handle_back_main, pattern="^back_main$"))
+        app.add_handler(CallbackQueryHandler(handle_view_quiz_callback, pattern="^viewq_"))
+        
+        app.add_handler(CallbackQueryHandler(handle_ready_click, pattern="^ready_"))
+        app.add_handler(CallbackQueryHandler(handle_start_private, pattern="^startprivate_"))
+        app.add_handler(CallbackQueryHandler(handle_confirm_private, pattern="^confirm_private_"))
+        app.add_handler(CallbackQueryHandler(handle_quiz_status, pattern="^status_"))
+        app.add_handler(CallbackQueryHandler(edit_quiz_menu, pattern="^edit_"))
+        app.add_handler(CallbackQueryHandler(back_to_summary, pattern="^backto_"))
+        app.add_handler(CallbackQueryHandler(edit_question_trigger, pattern="^edquestion_"))
+        app.add_handler(CallbackQueryHandler(handle_question_detail, pattern="^editq_"))
+        app.add_handler(CallbackQueryHandler(handle_delete_question, pattern="^delq_"))
+        app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
+        app.add_handler(CommandHandler("broadcast", broadcast_command))
+        
+        # 🔴 NEW: Quiz pause/resume handlers
+        app.add_handler(CallbackQueryHandler(handle_pause_quiz, pattern="^pausequiz_"))
+        app.add_handler(CallbackQueryHandler(handle_stop_quiz_from_pause, pattern="^stopquiz_"))
+        
+        app.add_handler(PollAnswerHandler(track_poll_answers))
+        app.add_handler(InlineQueryHandler(inline_query_handler))
+        
+        # 🚀 BOT RUN/POLLING INITIALIZATION
+        logging.info("Starting Quiz Bot polling...")
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        
+        # Bot ko running state me rakhne ke liye infinite event wait loop
+        await asyncio.Event().wait()
+
+    # 🔥 FIXED syntax error: Open 'try' block ko yahan handle aur close kiya hai
+    except Exception as e:
+        logging.error(f"Critical error in main loop: {e}")
+
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot execution stopped clean.")
+        
