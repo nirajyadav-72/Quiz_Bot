@@ -124,12 +124,51 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        if chat_type == "private" or chat_type.value == "private":
+        
+        # 'private' string check ko fix kiya string convert karke
+        is_private = str(chat_type) == "private" or (hasattr(chat_type, "value") and chat_type.value == "private")
+        
+        if is_private:
             cursor.execute("INSERT OR IGNORE INTO broadcast_users (chat_id) VALUES (?)", (chat_id,))
         else:
             cursor.execute("INSERT OR IGNORE INTO broadcast_groups (chat_id) VALUES (?)", (chat_id,))
         conn.commit()
         conn.close()
+
+        # 🔥 GROUP KE LIYE BUTTONS DELETE KARNE KA LOGIC (NYA BADLAV)
+        if not is_private:
+            quiz_message_id = None
+            try:
+                # Hum maan rahe hain ki active quiz ki data 'active_quizzes' ya jo bhi aapki table ho usme save hai
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                # ⚠️ Note: Apni table aur column ka naam check karke badal lena agar alag ho toh
+                cursor.execute("SELECT message_id FROM active_quizzes WHERE chat_id = ?", (chat_id,))
+                row = cursor.fetchone()
+                if row:
+                    quiz_message_id = row[0]
+                conn.close()
+            except Exception as e:
+                logging.error(f"Error fetching active quiz message_id: {e}")
+
+            # Agar purani message_id mili, toh uske Resume/Stop buttons delete (None) karein
+            if quiz_message_id:
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=quiz_message_id,
+                        reply_markup=None  # Reply markup None karne se buttons delete ho jate hain
+                    )
+                except TelegramError:
+                    pass
+
+            # User ke bheje gaye /start command message ko bhi group se delete karein
+            try:
+                await update.message.delete()
+            except TelegramError:
+                pass
+                
+            return # Group me /start ka koi reply text nahi jayega, bas buttons delete honge
 
         # Check for active quiz creation (Aapka pehle wala rules check)
         if check_active_quiz_creation(update.message.from_user.id, context):
@@ -193,7 +232,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in start: {e}")
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
-
+            
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Check for active quiz creation
