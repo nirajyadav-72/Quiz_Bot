@@ -1866,14 +1866,18 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast command for owner to send text, media, or stickers safely"""
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id  # Current Group ID check karne ke liye
+    chat_type = update.effective_chat.type
 
-    # 1. Check karein ki user owner hai ya nahi
+    # 1. Check karein ki user owner hai ya nahi (Strict Owner Check)
     if OWNER_ID and user_id != OWNER_ID:
         await update.message.reply_text("👑 This command is only for the bot owner.")
         return
 
-    # 2. Check karein ki command .env wali specific Group ID me hi chalayi gayi hai
-    if SUPPORT_GROUP_ID and chat_id != SUPPORT_GROUP_ID:
+    # 2. Check karein ki command authorized group me hai YA owner ki private chat me hai
+    is_support_group = (SUPPORT_GROUP_ID and chat_id == SUPPORT_GROUP_ID)
+    is_private_chat = (chat_type == "private")
+
+    if not (is_support_group or is_private_chat):
         await update.message.reply_text("❌ Ye command is group me allowed nahi hai.")
         return
 
@@ -1907,7 +1911,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_id=target_message.message_id
             )
             success_users += 1
-            await asyncio.sleep(0.05)  # FloodWait se bachne ke liye chota delay
+            await asyncio.sleep(0.1)  # FloodWait se bachne ke liye safe delay (0.05 se 0.1 kiya)
         except Exception:
             failed_users += 1
 
@@ -1920,7 +1924,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 message_id=target_message.message_id
             )
             success_groups += 1
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.1) # Safe delay
         except Exception:
             failed_groups += 1
 
