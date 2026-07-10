@@ -1368,14 +1368,138 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
         except Exception:
             pass
-            
-async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle quiz pause resume"""
+
+async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-joins users, hides old resume/stop buttons IMMEDIATELY on first panel interaction"""
     try:
         query = update.callback_query
-        await query.answer()
+        chat_id = query.message.chat_id
+        message_id = query.message.message_id
+        user_id = query.from_user.id
+        user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
+        quiz_id = query.data.split("_")[1]
         
-        # Parse: pausequiz_chat_id
+        # 🟢 NAYA BADLAV: Naya panel aate hi agar koi pehli click kare, toh purane Resume/Stop buttons turant hide honge
+        if chat_id in GROUP_GAMES:
+            old_game = GROUP_GAMES[chat_id]
+            last_menu_id = old_game.get("last_menu_message_id")
+            
+            if last_menu_id:
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=last_menu_id,
+                        reply_markup=None # Purane dono buttons gayab
+                    )
+                except Exception:
+                    pass
+
+        # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
+        if chat_id in GROUP_GAMES:
+            old_game = GROUP_GAMES[chat_id]
+            if old_game.get("quiz_paused") or str(old_game.get("quiz_id")) != str(quiz_id):
+                if not old_game.get("quiz_started") or old_game.get("setup_message_id") != message_id:
+                    del GROUP_GAMES[chat_id]
+
+        if chat_id not in GROUP_GAMES:
+            GROUP_GAMES[chat_id] = {
+                "quiz_id": quiz_id, 
+                "joined_users": {}, 
+                "current_q": 0, 
+                "scores": {}, 
+                "poll_map": {}, 
+                "start_time": None,
+                "user_answers": {},  
+                "question_start_times": {},
+                "ready_users": set(),  
+                "quiz_started": False,
+                "poll_message_ids": {},
+                "setup_message_id": message_id,
+                "setup_panel_text": query.message.text,
+                "is_private": False,
+                "quiz_paused": False,
+                "consecutive_no_answers": 0,
+                "last_menu_message_id": None # Track karne ke liye field
+            }
+        else:
+            if GROUP_GAMES[chat_id].get("setup_message_id") is None:
+                GROUP_GAMES[chat_id]["setup_message_id"] = message_id
+                GROUP_GAMES[chat_id]["setup_panel_text"] = query.message.text
+            
+        game = GROUP_GAMES[chat_id]
+
+        # 🚀 ANTI-ERROR MULTI-USER BYPASS:
+        if game["quiz_started"]:
+            if user_id not in game["joined_users"]:
+                game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
+                game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+                game["user_answers"][user_id] = {}
+            game["ready_users"].add(user_id)
+            try:
+                await query.answer("Aapko chalte countdown me shaamil kar liya gaya hai! ⚡", show_alert=False)
+            except Exception:
+                pass
+            return
+
+        if user_id not in game["joined_users"]:
+            game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
+            game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+            game["user_answers"][user_id] = {}
+
+        game["ready_users"].add(user_id)
+        ready_count = len(game["ready_users"])
+
+        is_private_chat = query.message.chat.type == "private"
+        min_ready_required = 1 if is_private_chat else 2
+
+        if ready_count >= min_ready_required:
+            game["quiz_started"] = True
+            await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
+            
+            keyboard = []  
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
+            
+            for count in ["🎲 The quiz is about to begin…", "3️⃣....", "2️⃣Ready...", "1️⃣ SET…", "Go..🚀"]:
+                countdown_msg = await context.bot.send_message(chat_id=chat_id, text=count)
+                await asyncio.sleep(1)
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=countdown_msg.message_id)
+                except Exception as e:
+                    logging.warning(f"Could not delete countdown message: {e}")
+
+            banner_msg = await context.bot.send_message(chat_id=chat_id, text="🔥 Get ready! Quiz shuru ho rahi hai... 🚀")
+            await asyncio.sleep(5)
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=banner_msg.message_id)
+            except Exception as e:
+                logging.warning(f"Could not delete banner message: {e}")
+            
+            game["current_q"] = 0
+            asyncio.create_task(send_next_group_poll(chat_id, context))
+        else:
+            keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
+            try:
+                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
+            except Exception:
+                pass
+            await query.answer("Aapne confirmation register kar di! 👍")
+            
+    except Exception as e:
+        logging.error(f"Error in handle_ready_click: {e}")
+        try:
+            await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
+        except Exception:
+            pass
+
+async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle quiz resume - Anyone can resume"""
+    try:
+        query = update.callback_query
+        await query.answer() # Kisi ke liye bhi response allow hai
+        
         parts = query.data.split("_")
         chat_id = int(parts[1])
         
@@ -1387,10 +1511,13 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game["quiz_paused"] = False
         game["consecutive_no_answers"] = 0
         
-        await query.edit_message_text(
+        msg = await query.edit_message_text(
             text="Quiz Resuming...\n\n🚀 Next question coming up!",
-            reply_markup=InlineKeyboardMarkup([])
+            reply_markup=InlineKeyboardMarkup([]) # Dono buttons hide ho gaye
         )
+        
+        # Message ID save ho rahi hai taaki naye panel ke click par tracks clean ho sakein
+        game["last_menu_message_id"] = msg.message_id
         
         await asyncio.sleep(2)
         asyncio.create_task(send_next_group_poll(chat_id, context))
@@ -1398,23 +1525,31 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error in handle_pause_quiz: {e}")
         await query.answer("❌ Error", show_alert=True)
 
+
 async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle quiz stop from pause menu"""
+    """Handle quiz stop from pause menu - Restricted to Admins/Owner only"""
     try:
         query = update.callback_query
-        await query.answer()
+        user_id = query.from_user.id  
         
-        # Parse: stopquiz_chat_id
         parts = query.data.split("_")
         chat_id = int(parts[1])
+        
+        # 🟢 ADMIN CHECK: Sirf Admin ya Creator hi stop kar payenge
+        member = await context.bot.get_chat_member(chat_id=chat_id, user_id=user_id)
+        if member.status not in ['administrator', 'creator']:
+            await query.answer("❌ Sirf Group Admin ya Owner hi quiz stop kar sakte hain!", show_alert=True)
+            return
+
+        await query.answer() 
         
         if chat_id not in GROUP_GAMES:
             await query.answer("❌ Quiz not found", show_alert=True)
             return
         
         await query.edit_message_text(
-            text="❌ Quiz stopped!\n\n🏁 Final Result:",
-            reply_markup=InlineKeyboardMarkup([])
+            text="❌ Quiz stopped by admin!\n\n🏁 Final Result:",
+            reply_markup=InlineKeyboardMarkup([]) # Dono buttons hide ho gaye
         )
         
         await compile_group_leaderboard(chat_id, context)
@@ -1422,30 +1557,28 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
         logging.error(f"Error in handle_stop_quiz_from_pause: {e}")
         await query.answer("❌ Error", show_alert=True)
 
+
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Stop the running quiz in group"""
+    """Stop the running quiz in group via text command"""
     try:
         chat_id = update.message.chat_id
-        user_id = update.message.from_user.id
         
-        # Check if quiz is running in this chat
         if chat_id not in GROUP_GAMES:
             await update.message.reply_text("❌ Koi quiz is group me chal nahi rahi hai!")
             return
         
         game = GROUP_GAMES[chat_id]
         
-        # Check if quiz has started
         if not game.get("quiz_started"):
             await update.message.reply_text("❌ Quiz abhi start hi nahi huya hai!")
             return
         
-        # Stop the quiz and show leaderboard
         await update.message.reply_text("Quiz stop ho gaya! Final Result dikha raha hoon...")
         await compile_group_leaderboard(chat_id, context)
     except Exception as e:
         logging.error(f"Error in stop_quiz: {e}")
         await update.message.reply_text("❌ Error stopping quiz")
+        
 
 async def send_next_group_poll(chat_id, context):
     try:
