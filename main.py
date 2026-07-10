@@ -1258,32 +1258,35 @@ async def save_edited_timer(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ==========================================
 
 async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-joins users, hides old pause/stop buttons IMMEDIATELY on first panel interaction"""
+    """Auto-joins users and FORCE HIDES old buttons before ANY state reset"""
     try:
         query = update.callback_query
         chat_id = query.message.chat_id
         message_id = query.message.message_id
         user_id = query.from_user.id
         user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
-        quiz_id = query.data.split("_")[1]
         
-        # 🟢 NAYA BADLAV: Jaise hi naye panel ke button par pehli click ho, sabse pehle purane buttons hide karein
+        # Sahi parsing format index 1 ke sath
+        parts = query.data.split("_")
+        quiz_id = parts[1]
+        
+        # 🟢 FINAL FIXED FIX: Kisi bhi button click par pehle purane controls ko Telegram network se saaf karein
         if chat_id in GROUP_GAMES:
             old_game = GROUP_GAMES[chat_id]
             last_menu_id = old_game.get("last_menu_message_id")
             
-            # Agar purana menu active hai, toh bina kisi wait ke use turant saaf karein
-            if last_menu_id:
+            # Agar purana menu message ID available hai aur wo naya panel nahi hai
+            if last_menu_id and int(last_menu_id) != int(message_id):
                 try:
                     await context.bot.edit_message_reply_markup(
                         chat_id=chat_id,
-                        message_id=last_menu_id,
-                        reply_markup=None # Old Pause/Stop buttons hide ho gaye
+                        message_id=int(last_menu_id),
+                        reply_markup=None # Resume/Stop buttons block ho jayenge
                     )
                 except Exception:
                     pass
 
-        # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
+        # 🔥 AUTO-RESET LOGIC: Ab safety ke sath clean karne ke baad data reset karein
         if chat_id in GROUP_GAMES:
             old_game = GROUP_GAMES[chat_id]
             if old_game.get("quiz_paused") or str(old_game.get("quiz_id")) != str(quiz_id):
@@ -1308,134 +1311,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "is_private": False,
                 "quiz_paused": False,
                 "consecutive_no_answers": 0,
-                "last_menu_message_id": None # Track rakhne ke liye field
-            }
-        else:
-            if GROUP_GAMES[chat_id].get("setup_message_id") is None:
-                GROUP_GAMES[chat_id]["setup_message_id"] = message_id
-                GROUP_GAMES[chat_id]["setup_panel_text"] = query.message.text
-            
-        game = GROUP_GAMES[chat_id]
-
-        # 🚀 ANTI-ERROR MULTI-USER BYPASS:
-        if game["quiz_started"]:
-            if user_id not in game["joined_users"]:
-                game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
-                game["scores"][user_id] = {"score": 0, "total_time": 0.0}
-                game["user_answers"][user_id] = {}
-            game["ready_users"].add(user_id)
-            try:
-                await query.answer("Aapko chalte countdown me shaamil kar liya gaya hai! ⚡", show_alert=False)
-            except Exception:
-                pass
-            return
-
-        if user_id not in game["joined_users"]:
-            game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
-            game["scores"][user_id] = {"score": 0, "total_time": 0.0}
-            game["user_answers"][user_id] = {}
-
-        game["ready_users"].add(user_id)
-        ready_count = len(game["ready_users"])
-
-        is_private_chat = query.message.chat.type == "private"
-        min_ready_required = 1 if is_private_chat else 2
-
-        if ready_count >= min_ready_required:
-            game["quiz_started"] = True
-            await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
-            
-            keyboard = []  # No button - just empty
-            try:
-                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
-            except Exception:
-                pass
-            
-            # Send countdown messages
-            for count in ["🎲 The quiz is about to begin…", "3️⃣....", "2️⃣Ready...", "1️⃣ SET…", "Go..🚀"]:
-                countdown_msg = await context.bot.send_message(chat_id=chat_id, text=count)
-                await asyncio.sleep(1)
-                try:
-                    await context.bot.delete_message(chat_id=chat_id, message_id=countdown_msg.message_id)
-                except Exception as e:
-                    logging.warning(f"Could not delete countdown message: {e}")
-
-            # Send banner message
-            banner_msg = await context.bot.send_message(chat_id=chat_id, text="🔥 Get ready! Quiz shuru ho rahi hai... 🚀")
-            await asyncio.sleep(5)
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=banner_msg.message_id)
-            except Exception as e:
-                logging.warning(f"Could not delete banner message: {e}")
-            
-            game["current_q"] = 0
-            asyncio.create_task(send_next_group_poll(chat_id, context))
-        else:
-            keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
-            try:
-                await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
-            except Exception:
-                pass
-            await query.answer("Aapne confirmation register kar di! 👍")
-            
-    except Exception as e:
-        logging.error(f"Error in handle_ready_click: {e}")
-        try:
-            await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
-        except Exception:
-            pass
-
-async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-joins users, hides old resume/stop buttons IMMEDIATELY on first panel interaction"""
-    try:
-        query = update.callback_query
-        chat_id = query.message.chat_id
-        message_id = query.message.message_id
-        user_id = query.from_user.id
-        user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
-        quiz_id = query.data.split("_")[1]
-        
-        # 🟢 NAYA BADLAV: Naya panel aate hi agar koi pehli click kare, toh purane Resume/Stop buttons turant hide honge
-        if chat_id in GROUP_GAMES:
-            old_game = GROUP_GAMES[chat_id]
-            last_menu_id = old_game.get("last_menu_message_id")
-            
-            if last_menu_id:
-                try:
-                    await context.bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=last_menu_id,
-                        reply_markup=None # Purane dono buttons gayab
-                    )
-                except Exception:
-                    pass
-
-        # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
-        if chat_id in GROUP_GAMES:
-            old_game = GROUP_GAMES[chat_id]
-            if old_game.get("quiz_paused") or str(old_game.get("quiz_id")) != str(quiz_id):
-                if not old_game.get("quiz_started") or old_game.get("setup_message_id") != message_id:
-                    del GROUP_GAMES[chat_id]
-
-        if chat_id not in GROUP_GAMES:
-            GROUP_GAMES[chat_id] = {
-                "quiz_id": quiz_id, 
-                "joined_users": {}, 
-                "current_q": 0, 
-                "scores": {}, 
-                "poll_map": {}, 
-                "start_time": None,
-                "user_answers": {},  
-                "question_start_times": {},
-                "ready_users": set(),  
-                "quiz_started": False,
-                "poll_message_ids": {},
-                "setup_message_id": message_id,
-                "setup_panel_text": query.message.text,
-                "is_private": False,
-                "quiz_paused": False,
-                "consecutive_no_answers": 0,
-                "last_menu_message_id": None # Track karne ke liye field
+                "last_menu_message_id": None
             }
         else:
             if GROUP_GAMES[chat_id].get("setup_message_id") is None:
@@ -1505,16 +1381,12 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
     except Exception as e:
         logging.error(f"Error in handle_ready_click: {e}")
-        try:
-            await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
-        except Exception:
-            pass
-
+            
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle quiz resume - Anyone can resume"""
+    """Handle quiz pause resume and securely save menu state"""
     try:
         query = update.callback_query
-        await query.answer() # Kisi ke liye bhi response allow hai
+        await query.answer()
         
         parts = query.data.split("_")
         chat_id = int(parts[1])
@@ -1527,12 +1399,13 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game["quiz_paused"] = False
         game["consecutive_no_answers"] = 0
         
+        # 🟢 Yahan text update ke sath naye inline markup ko clean blank state me track karein
         msg = await query.edit_message_text(
             text="Quiz Resuming...\n\n🚀 Next question coming up!",
-            reply_markup=InlineKeyboardMarkup([]) # Dono buttons hide ho gaye
+            reply_markup=InlineKeyboardMarkup([])
         )
         
-        # Message ID save ho rahi hai taaki naye panel ke click par tracks clean ho sakein
+        # Sahi tarike se message ID track karein
         game["last_menu_message_id"] = msg.message_id
         
         await asyncio.sleep(2)
@@ -1540,7 +1413,6 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in handle_pause_quiz: {e}")
         await query.answer("❌ Error", show_alert=True)
-
 
 async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz stop from pause menu - Restricted to Admins/Owner only"""
