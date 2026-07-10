@@ -1275,7 +1275,8 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "setup_panel_text": query.message.text,
                 "is_private": False,
                 "quiz_paused": False,
-                "consecutive_no_answers": 0
+                "consecutive_no_answers": 0,
+                "last_menu_message_id": None  # Naya field save track rakhne ke liye
             }
         else:
             # Update setup message ID if not already set
@@ -1286,7 +1287,6 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         game = GROUP_GAMES[chat_id]
 
         # 🚀 ANTI-ERROR MULTI-USER BYPASS:
-        # Agar countdown chal raha hai, toh users ko error dene ke bajaye silently group me add karein
         if game["quiz_started"]:
             if user_id not in game["joined_users"]:
                 game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
@@ -1309,23 +1309,32 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ready_count = len(game["ready_users"])
         joined_count = len(game["joined_users"])
 
-        # Check if this is from external sharing link (single player mode)
-        # In single player mode (private chat), start with just 1 ready user
         is_private_chat = query.message.chat.type == "private"
         min_ready_required = 1 if is_private_chat else 2
 
         if ready_count >= min_ready_required:
+            # 🟢 NAYA BADLAV: Naya quiz start hone par purane pause/resume buttons hide karein
+            last_menu_id = game.get("last_menu_message_id")
+            if last_menu_id:
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=last_menu_id,
+                        reply_markup=None
+                    )
+                except Exception:
+                    pass
+
             game["quiz_started"] = True
             await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
             
-            # Only edit button, keep panel message same
             keyboard = []  # No button - just empty
             try:
                 await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
             except Exception:
                 pass
             
-            # Send countdown messages instead of editing the setup message
+            # Send countdown messages
             for count in ["🎲 The quiz is about to begin…", "3️⃣....", "2️⃣Ready...", "1️⃣ SET…", "Go..🚀"]:
                 countdown_msg = await context.bot.send_message(chat_id=chat_id, text=count)
                 await asyncio.sleep(1)
@@ -1345,10 +1354,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             game["current_q"] = 0
             asyncio.create_task(send_next_group_poll(chat_id, context))
         else:
-            # Update only button with new count - panel message stays SAME
             keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
-            
-            # EDIT ONLY THE BUTTON, NOT THE WHOLE MESSAGE
             try:
                 await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
             except Exception:
@@ -1361,6 +1367,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
         except Exception:
             pass
+            
             
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
