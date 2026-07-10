@@ -1857,25 +1857,6 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 
     except Exception as e:
         logging.error(f"Error in inline_query_handler: {e}")
-
-("BOT_TOKEN not found in environment variables!")
-        return
-    
-    try:
-                # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
-        request_config = HTTPXRequest(
-            connect_timeout=35.0,  # Max connection hold time
-            read_timeout=45.0,     # Max wait time for incoming operations
-            write_timeout=35.0     # Max delivery buffer time
-        )
-        
-        # ✅ SYNTAX & CONFIG FIXED: Builder se dot(.) wale extra timeouts hata diye hain
-        app = (
-            Application.builder()
-            .token(BOT_TOKEN)
-            .request(request_config)
-            .build()
-        )
         
 #broadcast command handler
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
