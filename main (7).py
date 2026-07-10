@@ -24,6 +24,9 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID")) if os.getenv("OWNER_ID") else None
 
+# 🔥 FIXED: .env se SUPPORT_GROUP_ID load karne ke liye ye line jodi hai
+SUPPORT_GROUP_ID = int(os.getenv("SUPPORT_GROUP_ID")) if os.getenv("SUPPORT_GROUP_ID") else None
+
 DB_FILE = "quiz_bot.db"
 
 # Global dictionary for active group games memory
@@ -91,7 +94,7 @@ init_db()
 def check_active_quiz_creation(user_id, context):
     """Check if user has an active quiz creation in progress"""
     return "quiz_build" in context.user_data and context.user_data["quiz_build"].get("title")
-
+    
 async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         msg_obj = update.callback_query.message if update.callback_query else update.message
