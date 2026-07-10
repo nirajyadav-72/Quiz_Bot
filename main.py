@@ -135,35 +135,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
-        # 🔥 GROUP KE LIYE RESUME/STOP BUTTONS DELETE KARNE KA LOGIC
+        # 🔥 SMART OLD BUTTONS CLEANUP (COMMAND DELETE NAHI HOGI)
         if not is_private:
+            # Agar group me pehle se koi quiz data active ya paused pada hai
             if chat_id in GROUP_GAMES:
                 game = GROUP_GAMES[chat_id]
                 
-                # Agar quiz paused hai aur hamare paas pause wale message ki ID hai
+                # Naya quiz aane par agar purana quiz paused tha aur uski button message ID save thi
                 if game.get("quiz_paused") and "pause_message_id" in game:
                     try:
-                        # Purane message se reply_markup=None karke buttons remove karein
+                        # Purane paused message se Resume/Stop buttons ko permanently gayab (None) karein
                         await context.bot.edit_message_reply_markup(
                             chat_id=chat_id,
                             message_id=game["pause_message_id"],
                             reply_markup=None
                         )
-                        # ID ko clean kar dein taaki dobara loop na chale
-                        del game["pause_message_id"]
                     except Exception:
                         pass
-
-            # User ke bheje gaye /start command message ko bhi group se delete karein
-            try:
-                await update.message.delete()
-            except Exception:
-                pass
                 
-            return # Group me /start ka koi text reply nahi jayega, bas buttons remove honge
+                # 💡 SAFETY: Kyunki naya quiz lag raha hai, purane quiz ka data memory se saaf kar dein
+                GROUP_GAMES.pop(chat_id, None)
 
-        # Check for active quiz creation
-        if check_active_quiz_creation(update.message.from_user.id, context):
+        # Check for active quiz creation (Sirf Private Chat/DM ke liye rule check)
+        if is_private and check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
                 "⚠️ **You have an unfinished quiz.** Please finish creating your quiz or send /cancel.\n\n"
                 "You cannot start a new quiz or use other commands until you complete this one."
@@ -171,7 +165,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         args = context.args
-        # Handle direct deep-linking tracking code
+        # Handle direct deep-linking tracking code (Group me quiz panel yahan se open hota hai)
         if args and len(args) > 0 and args[0].startswith("quiz_"):
             quiz_id = args[0].split("_")[1]
             
