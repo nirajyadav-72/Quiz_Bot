@@ -118,8 +118,23 @@ async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 # start handler 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        # 🟢 SABSE BADA BADLAV: Nayi command milte hi bina kisi click ke instant purane buttons hide karein
+        chat_id = update.effective_chat.id
+        if chat_id in GROUP_GAMES:
+            old_game = GROUP_GAMES[chat_id]
+            last_menu_id = old_game.get("last_menu_message_id")
+            
+            if last_menu_id:
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=last_menu_id,
+                        reply_markup=None # Resume aur Stop buttons instant hide ho gaye
+                    )
+                except Exception:
+                    pass # Message delete ya purana hone par error skip karein
+
         # Broadcast ke liye Chat ID aur Type database me save karein
-        chat_id = update.message.chat.id
         chat_type = update.message.chat.type
 
         conn = sqlite3.connect(DB_FILE)
@@ -193,6 +208,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in start: {e}")
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
+        
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
