@@ -1869,7 +1869,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. Check karein ki user owner hai ya nahi
     if OWNER_ID and user_id != OWNER_ID:
-        await update.message.reply_text("❌ Sirf Bot Owner hi is command ka use kar sakta hai.")
+        await update.message.reply_text("👑 This command is only for the bot owner.")
         return
 
     # 2. Check karein ki command .env wali specific Group ID me hi chalayi gayi hai
@@ -1883,7 +1883,7 @@ async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     target_message = update.message.reply_to_message
-    status_msg = await update.message.reply_text("📢 **Quiz Bot Broadcast shuru ho raha hai...**")
+    status_msg = await update.message.reply_text("📢 Quiz Bot Broadcast shuru ho raha hai...")
 
     # Database se active chats fetch karein
     conn = sqlite3.connect(DB_FILE)
