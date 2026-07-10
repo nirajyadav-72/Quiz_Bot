@@ -1242,7 +1242,7 @@ async def save_edited_timer(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ==========================================
 
 async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auto-joins users and sets dynamic counter to verify activation benchmarks"""
+    """Auto-joins users, hides old pause/stop buttons IMMEDIATELY on first panel interaction"""
     try:
         query = update.callback_query
         chat_id = query.message.chat_id
@@ -1251,6 +1251,22 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
         quiz_id = query.data.split("_")[1]
         
+        # 🟢 NAYA BADLAV: Jaise hi naye panel ke button par pehli click ho, sabse pehle purane buttons hide karein
+        if chat_id in GROUP_GAMES:
+            old_game = GROUP_GAMES[chat_id]
+            last_menu_id = old_game.get("last_menu_message_id")
+            
+            # Agar purana menu active hai, toh bina kisi wait ke use turant saaf karein
+            if last_menu_id:
+                try:
+                    await context.bot.edit_message_reply_markup(
+                        chat_id=chat_id,
+                        message_id=last_menu_id,
+                        reply_markup=None # Old Pause/Stop buttons hide ho gaye
+                    )
+                except Exception:
+                    pass
+
         # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
         if chat_id in GROUP_GAMES:
             old_game = GROUP_GAMES[chat_id]
@@ -1276,10 +1292,9 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 "is_private": False,
                 "quiz_paused": False,
                 "consecutive_no_answers": 0,
-                "last_menu_message_id": None  # Naya field save track rakhne ke liye
+                "last_menu_message_id": None # Track rakhne ke liye field
             }
         else:
-            # Update setup message ID if not already set
             if GROUP_GAMES[chat_id].get("setup_message_id") is None:
                 GROUP_GAMES[chat_id]["setup_message_id"] = message_id
                 GROUP_GAMES[chat_id]["setup_panel_text"] = query.message.text
@@ -1299,7 +1314,6 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
             return
 
-        # Auto-Join structure initialization execution
         if user_id not in game["joined_users"]:
             game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
             game["scores"][user_id] = {"score": 0, "total_time": 0.0}
@@ -1307,24 +1321,11 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         game["ready_users"].add(user_id)
         ready_count = len(game["ready_users"])
-        joined_count = len(game["joined_users"])
 
         is_private_chat = query.message.chat.type == "private"
         min_ready_required = 1 if is_private_chat else 2
 
         if ready_count >= min_ready_required:
-            # 🟢 NAYA BADLAV: Naya quiz start hone par purane pause/resume buttons hide karein
-            last_menu_id = game.get("last_menu_message_id")
-            if last_menu_id:
-                try:
-                    await context.bot.edit_message_reply_markup(
-                        chat_id=chat_id,
-                        message_id=last_menu_id,
-                        reply_markup=None
-                    )
-                except Exception:
-                    pass
-
             game["quiz_started"] = True
             await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
             
@@ -1367,7 +1368,6 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
         except Exception:
             pass
-            
             
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
