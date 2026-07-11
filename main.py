@@ -97,9 +97,22 @@ def check_active_quiz_creation(user_id, context):
     
 async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
+        # 1. Get the chat and message object
+        chat_obj = update.effective_chat
         msg_obj = update.callback_query.message if update.callback_query else update.message
         user_id = update.callback_query.from_user.id if update.callback_query else update.message.from_user.id
         
+        # 2. Check if the command is used in a group or supergroup
+        if chat_obj.type in ['group', 'supergroup']:
+            if update.callback_query:
+                await update.callback_query.answer("Not allowed here", show_alert=True)
+            
+            await msg_obj.reply_text(
+                "⚠️ यह कमांड केवल प्राइवेट चैट में काम करती है। कृपया मुझे पर्सनल मैसेज (DM) में `/newquiz` भेजें।"
+            )
+            return ConversationHandler.END  # Stop the conversation handler inside groups
+
+        # 3. Rest of your original code for private chat
         if update.callback_query:
             await update.callback_query.answer()
             
@@ -112,7 +125,9 @@ async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return TITLE
     except Exception as e:
         logging.error(f"Error in new_quiz_start: {e}")
-        await update.message.reply_text("❌ An error occurred. Please try again with /newquiz")
+        # Safeguard if msg_obj is available during an error
+        if 'msg_obj' in locals():
+            await msg_obj.reply_text("❌ An error occurred. Please try again with /newquiz")
         return ConversationHandler.END
 
 # start handler 
