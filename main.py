@@ -495,11 +495,14 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Error: Question not found!")
             return QUESTIONS
         
+        # 🟢 YAHAN DALEIN (YEH NAYA LOGIC HAI):
+        if update.message.text and update.message.text.strip().lower() == "/undo":
+            return await handle_undo(update, context)
+        
         # Check if a new poll is being sent - auto-skip pre-message
         if update.message.poll:
             # Auto-skip pre-message and process the new poll
             context.user_data["quiz_build"]["questions"][current_idx]["pre_message"] = ""
-            context.user_data.pop("current_question_index", None)
             
             # Process the new poll
             poll = update.message.poll
@@ -542,8 +545,6 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             else:
                 context.user_data["quiz_build"]["questions"][current_idx]["pre_message"] = ""
         
-        context.user_data.pop("current_question_index", None)
-        
         # ========================================
         # 🔴 SHOW BOTTOM CONTAINER (QUESTIONS STATE)
         # ========================================
@@ -562,14 +563,15 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             "💬 Next step:\n"
             "➤ Send next question poll\n"
             "✨ Or\n"
-            "➤ type /done to finish quiz",
+            "➤ type /done to finish quiz\n"
+            "↩️ Galti se galat pre-message set ho gaya? Type /undo to delete it.",
             reply_markup=bottom_container
         )
         return QUESTIONS
     except Exception as e:
         logging.error(f"Error in receive_pre_message: {e}")
         return QUESTIONS
-
+        
 async def handle_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         quiz = context.user_data.get("quiz_build")
