@@ -2047,61 +2047,70 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 
     except Exception as e:
         logging.error(f"Error in inline_query_handler: {e}")
-        
+
 async def owner_status_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Direct text command /status for the Owner to view all groups"""
+    """Direct text command /status for the Owner to view all groups using broadcast_groups table"""
     try:
         user_id = update.message.from_user.id
         
         # 🟢 .env se li gayi OWNER_ID se matching check
-        if OWNER_ID == 0 or user_id != OWNER_ID:
+        if OWNER_ID is None or user_id != OWNER_ID:
             await update.message.reply_text("❌ Unauthorized! This command is only accessible by the bot owner.")
             return
 
-        processing_msg = await update.message.reply_text("🔍 Fetching active groups and invite links from database logs...")
+        processing_msg = await update.message.reply_text("🔍 Fetching active groups from broadcast logs...")
         
+        # 🟢 Connecting to database and reading from broadcast_groups table
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        
         try:
-            # Apne database ke mutabik group IDs nikalen
-            cursor.execute("SELECT DISTINCT creator_id FROM quizzes") 
+            cursor.execute("SELECT chat_id FROM broadcast_groups")
             chat_rows = cursor.fetchall()
-        except Exception:
+        except Exception as db_err:
+            logging.error(f"Database error while reading broadcast_groups: {db_err}")
             chat_rows = []
         conn.close()
 
-        status_report = "📊 *Bot Active Groups Status Report* (Direct Command)\n\n"
+        if not chat_rows:
+            await processing_msg.delete()
+            await update.message.reply_text(
+                "⚠️ *No groups found in broadcast logs!.*\n\n"
+                "💡 *Reason:* Aapki `broadcast_groups` table abhi khali hai. Jab bot kisi group me save hoga ya broadcast me add hoga, tabhi yahan data dikhega."
+            )
+            return
+
+        status_report = "📊 *Bot Active Groups Status Report*\n\n"
         group_count = 0
 
         for row in chat_rows:
-            target_chat_id = row[0]
+            target_chat_id = row[0] # Fetching the chat_id from tuple
             
-            if str(target_chat_id).startswith("-"):
+            try:
+                # Live Telegram API lookup call
+                chat_details = await context.bot.get_chat(chat_id=target_chat_id)
+                group_name = chat_details.title
+                
                 try:
-                    chat_details = await context.bot.get_chat(chat_id=target_chat_id)
-                    group_name = chat_details.title
-                    
-                    try:
-                        invite_link = chat_details.invite_link
-                        if not invite_link:
-                            invite_link = await context.bot.export_chat_invite_link(chat_id=target_chat_id)
-                    except Exception:
-                        invite_link = "No Link Permission 🚫"
-
-                    group_count += 1
-                    status_report += f"*{group_count}. 👥 Name:* {group_name}\n"
-                    status_report += f"🆔 *Chat ID:* `{target_chat_id}`\n"
-                    status_report += f"🔗 *Link:* {invite_link}\n"
-                    status_report += "━" * 15 + "\n"
+                    invite_link = chat_details.invite_link
+                    if not invite_link:
+                        # Bot ke paas invite links export karne ki permission honi chahiye
+                        invite_link = await context.bot.export_chat_invite_link(chat_id=target_chat_id)
                 except Exception:
-                    continue
+                    invite_link = "No Link Permission 🚫"
 
-        # Processing message ko delete kar dete hain report bhejne se pehle
+                group_count += 1
+                status_report += f"*{group_count}. 👥 Name:* {escape_markdown(group_name)}\n"
+                status_report += f"🆔 *Chat ID:* `{target_chat_id}`\n"
+                status_report += f"🔗 *Link:* {invite_link}\n"
+                status_report += "━" * 15 + "\n"
+            except Exception:
+                # Agar bot group se remove ho chuka hai toh use skip karein
+                continue
+
         await processing_msg.delete()
 
         if group_count == 0:
-            await update.message.reply_text("⚠️ No active groups recorded or bot lacks group permissions to read data.")
+            await update.message.reply_text("⚠️ No active groups accessible. Bot might have been removed from old groups.")
         else:
             status_report += f"\n📉 *Total Active Groups:* {group_count}"
             await update.message.reply_text(text=status_report, parse_mode="Markdown")
