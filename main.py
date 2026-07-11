@@ -2118,12 +2118,12 @@ async def main():
                 DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
                 QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
                 
-                # 🟢 UPDATED: PRE_MESSAGE state ko modify kiya gaya hai 2 baar /undo support ke liye
+                # 🟢 PRE_MESSAGE state config for 2x /undo sequence mapping 
                 PRE_MESSAGE: [
-                    CommandHandler("undo", handle_undo),  # 👈 /undo command ko sabse pehle rakha hai
+                    CommandHandler("undo", handle_undo),  # 👈 /undo handler commands structural lookup priority mapping
                     CommandHandler("skip", receive_pre_message),
                     MessageHandler(filters.POLL, receive_pre_message),
-                    # 👈 Yahan commands ko exclude kiya (~filters.COMMAND) taaki /undo text na ban jaye
+                    # 👈 Commands are filtered out so /undo doesn't transform into text stream payload
                     MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION) & ~filters.COMMAND, receive_pre_message)
                 ],
                 TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
@@ -2175,7 +2175,7 @@ async def main():
         app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
         app.add_handler(CommandHandler("broadcast", broadcast_command))
         
-        # 🔴 NEW: Quiz pause/resume handlers
+        # 🔴 Quiz pause/resume handlers
         app.add_handler(CallbackQueryHandler(handle_pause_quiz, pattern="^pausequiz_"))
         app.add_handler(CallbackQueryHandler(handle_stop_quiz_from_pause, pattern="^stopquiz_"))
         
@@ -2191,7 +2191,13 @@ async def main():
         # Bot ko running state me rakhne ke liye infinite event wait loop
         await asyncio.Event().wait()
 
-    # 🔥 FIXED syntax error: Open 'try' block ko yahan handle aur close kiya hai
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
+
+# 🛑 YEH WALA HISA (EXECUTION LOOPS CLOSURE) BILKUL SATH ME JAYEGA:
+if __name__ == '__main__':
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot execution stopped clean.")
         
