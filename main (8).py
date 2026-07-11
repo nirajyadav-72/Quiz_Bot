@@ -2264,6 +2264,7 @@ async def main():
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("quizzes", quizzes_command))
         app.add_handler(CommandHandler("stop", stop_quiz))
+        app.add_handler(CommandHandler("status", owner_status_text_command))
         
         app.add_handler(new_quiz_handler)
         app.add_handler(quiz_edit_flow_handler)
