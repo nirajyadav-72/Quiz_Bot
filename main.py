@@ -405,6 +405,11 @@ async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     try:
         title = update.message.text.strip()
         
+        # 🔥 NEW LOGIC: Check if input is a valid command (except /skip or /done if allowed here)
+        if title.startswith('/') and title.lower() not in ['/skip']:
+            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
+            return ConversationHandler.END
+            
         # 🔴 NEW: Check if title exceeds 128 characters
         if len(title) > 128:
             await update.message.reply_text(
@@ -425,6 +430,12 @@ async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         text = update.message.text
+        
+        # 🔥 NEW LOGIC: Check if input is a valid command (except /skip)
+        if text.startswith('/') and text.lower() not in ['/skip']:
+            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
+            return ConversationHandler.END
+
         context.user_data["quiz_build"]["description"] = "" if text.lower() == "/skip" else text.strip()
         
         # ========================================
@@ -455,6 +466,11 @@ async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
+        # Check if text exists and is a command before processing poll logic
+        if update.message.text and update.message.text.startswith('/'):
+            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
+            return ConversationHandler.END
+
         poll = update.message.poll
         if poll.type != "quiz":
             await update.message.reply_text("❌ Kripya Quiz mode wala poll hi send karein:")
@@ -494,6 +510,13 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if current_idx < 0 or current_idx >= len(context.user_data.get("quiz_build", {}).get("questions", [])):
             await update.message.reply_text("❌ Error: Question not found!")
             return QUESTIONS
+        
+        # 🔥 NEW LOGIC: Check if text message is a command (excluding /skip and /done)
+        if update.message.text and update.message.text.startswith('/'):
+            cmd_check = update.message.text.lower()
+            if cmd_check not in ['/skip', '/done']:
+                await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
+                return ConversationHandler.END
         
         # Check if a new poll is being sent - auto-skip pre-message
         if update.message.poll:
@@ -569,37 +592,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logging.error(f"Error in receive_pre_message: {e}")
         return QUESTIONS
-
-async def handle_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    try:
-        quiz = context.user_data.get("quiz_build")
-        if quiz and quiz["questions"]:
-            quiz["questions"].pop()
-            
-            # ========================================
-            # 🔴 KEEP BOTTOM CONTAINER (STILL IN QUESTIONS STATE)
-            # ========================================
-            poll_button = KeyboardButton(
-                text="Create a Question",
-                request_poll=KeyboardButtonPollType(type="quiz")
-            )
-            bottom_container = ReplyKeyboardMarkup(
-                [[poll_button]], 
-                resize_keyboard=True,
-                one_time_keyboard=False
-            )
-            
-            await update.message.reply_text(
-                f"↩️ Last question removed! Quiz now has {len(quiz['questions'])} question(s).\n\nSend next question or /done.",
-                reply_markup=bottom_container
-            )
-        else:
-            await update.message.reply_text("❌ No questions to remove!")
-        return QUESTIONS
-    except Exception as e:
-        logging.error(f"Error in handle_undo: {e}")
-        return QUESTIONS
-
+        
 async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         quiz = context.user_data.get("quiz_build", {})
