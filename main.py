@@ -2286,6 +2286,7 @@ async def main():
         
         app.add_handler(new_quiz_handler)
         app.add_handler(quiz_edit_flow_handler)
+        app.add_handler(CallbackQueryHandler(owner_global_groups, pattern="^owner_groups_"))
 
         # Core system triggers binding maps
         app.add_handler(CallbackQueryHandler(view_my_quizzes, pattern="^btn_viewquizzes$"))
