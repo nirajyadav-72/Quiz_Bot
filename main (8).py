@@ -2048,6 +2048,68 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logging.error(f"Error in inline_query_handler: {e}")
         
+async def owner_status_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Direct text command /status for the Owner to view all groups"""
+    try:
+        user_id = update.message.from_user.id
+        
+        # 🟢 .env se li gayi OWNER_ID se matching check
+        if OWNER_ID == 0 or user_id != OWNER_ID:
+            await update.message.reply_text("❌ Unauthorized! This command is only accessible by the bot owner.")
+            return
+
+        processing_msg = await update.message.reply_text("🔍 Fetching active groups and invite links from database logs...")
+        
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        try:
+            # Apne database ke mutabik group IDs nikalen
+            cursor.execute("SELECT DISTINCT creator_id FROM quizzes") 
+            chat_rows = cursor.fetchall()
+        except Exception:
+            chat_rows = []
+        conn.close()
+
+        status_report = "📊 *Bot Active Groups Status Report* (Direct Command)\n\n"
+        group_count = 0
+
+        for row in chat_rows:
+            target_chat_id = row[0]
+            
+            if str(target_chat_id).startswith("-"):
+                try:
+                    chat_details = await context.bot.get_chat(chat_id=target_chat_id)
+                    group_name = chat_details.title
+                    
+                    try:
+                        invite_link = chat_details.invite_link
+                        if not invite_link:
+                            invite_link = await context.bot.export_chat_invite_link(chat_id=target_chat_id)
+                    except Exception:
+                        invite_link = "No Link Permission 🚫"
+
+                    group_count += 1
+                    status_report += f"*{group_count}. 👥 Name:* {group_name}\n"
+                    status_report += f"🆔 *Chat ID:* `{target_chat_id}`\n"
+                    status_report += f"🔗 *Link:* {invite_link}\n"
+                    status_report += "━" * 15 + "\n"
+                except Exception:
+                    continue
+
+        # Processing message ko delete kar dete hain report bhejne se pehle
+        await processing_msg.delete()
+
+        if group_count == 0:
+            await update.message.reply_text("⚠️ No active groups recorded or bot lacks group permissions to read data.")
+        else:
+            status_report += f"\n📉 *Total Active Groups:* {group_count}"
+            await update.message.reply_text(text=status_report, parse_mode="Markdown")
+
+    except Exception as e:
+        logging.error(f"Error in owner_status_text_command: {e}")
+        await update.message.reply_text("❌ Error generating groups status details.")
+                    
 #broadcast command handler
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Broadcast command for owner to send text, media, or stickers safely"""
