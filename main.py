@@ -495,7 +495,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Error: Question not found!")
             return QUESTIONS
         
-        # 🟢 YAHAN DALEIN (YEH NAYA LOGIC HAI):
+        # Agar user PRE_MESSAGE state mein /undo likhta hai
         if update.message.text and update.message.text.strip().lower() == "/undo":
             return await handle_undo(update, context)
         
@@ -521,15 +521,16 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             context.user_data["quiz_build"]["questions"].append(q_data)
             context.user_data["current_question_index"] = len(context.user_data["quiz_build"]["questions"]) - 1
             
+            # 🟢 FIXED: Naya poll aane par purana bottom keyboard hide karne ke liye ReplyKeyboardRemove joda hai
             await update.message.reply_text(
-            f"✅ Question added! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question.\n\n"
-            "⚡ Quick options:\n"
-            "➤ 📎 Send media | details (text, image, video, etc.) that will be add context\n"
-            "➤ 📄 Send text message for pre-message\n\n"
-            "💬 Optional:\n"
-            "➤ ➕ Now Send the next question directly (auto-skips pre-message)\n"
-            "➤ ⚠️ Quiz Finish karne ke liye Pre-message set kare!"
-            
+                f"✅ Question added! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question.\n\n"
+                "⚡ Quick options:\n"
+                "➤ 📎 Send media | details (text, image, video, etc.) that will be add context\n"
+                "➤ 📄 Send text message for pre-message\n\n"
+                "💬 Optional:\n"
+                "➤ ➕ Now Send the next question directly (auto-skips pre-message)\n"
+                "➤ ⚠️ Quiz Finish karne ke liye Pre-message set kare!",
+                reply_markup=ReplyKeyboardRemove() # 👈 Isse bottom button temporary hide ho jayega jab tak pre-message bhej rahe ho
             )
             return PRE_MESSAGE
         
@@ -571,7 +572,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
     except Exception as e:
         logging.error(f"Error in receive_pre_message: {e}")
         return QUESTIONS
-        
+            
 async def handle_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         quiz = context.user_data.get("quiz_build")
