@@ -400,17 +400,27 @@ async def quizzes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Error in quizzes_command: {e}")
         if update.message:
             await update.message.reply_text("❌ Error loading quizzes. Please try again.")
-            
+
+# 🟢 आपकी सभी वैध (Valid) कमांड्स की लिस्ट जिन्हें रोकना नहीं है
+VALID_COMMANDS = [
+    '/cancel', '/start', '/quizzes', '/broadcast', 
+    '/status', '/help', '/skip', '/undo', '/done'
+]
+
 async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         title = update.message.text.strip()
         
-        # 🔥 NEW LOGIC: Check if input is a valid command (except /skip or /done if allowed here)
-        if title.startswith('/') and title.lower() not in ['/skip']:
-            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
-            return ConversationHandler.END
+        # 🔥 CHECK COMMAND LOGIC
+        if title.startswith('/'):
+            first_word = title.split()[0].lower()
+            if first_word in VALID_COMMANDS:
+                return ConversationHandler.END  # Command ko apna kaam karne dein
+            else:
+                await update.message.reply_text("⚠️ Invalid command! Please complete or /cancel the quiz setup.")
+                return TITLE
             
-        # 🔴 NEW: Check if title exceeds 128 characters
+        # 🔴 Check if title exceeds 128 characters
         if len(title) > 128:
             await update.message.reply_text(
                 "⚠️ This title is too long. Please send a new one, 128 characters max."
@@ -431,10 +441,14 @@ async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     try:
         text = update.message.text
         
-        # 🔥 NEW LOGIC: Check if input is a valid command (except /skip)
-        if text.startswith('/') and text.lower() not in ['/skip']:
-            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
-            return ConversationHandler.END
+        # 🔥 CHECK COMMAND LOGIC
+        if text.startswith('/'):
+            first_word = text.split()[0].lower()
+            if first_word in VALID_COMMANDS:
+                return ConversationHandler.END  # Command ko apna kaam karne dein
+            else:
+                await update.message.reply_text("⚠️ Invalid command! Please complete or /cancel the quiz setup.")
+                return DESCRIPTION
 
         context.user_data["quiz_build"]["description"] = "" if text.lower() == "/skip" else text.strip()
         
@@ -466,10 +480,14 @@ async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 
 async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        # Check if text exists and is a command before processing poll logic
+        # 🔥 CHECK COMMAND LOGIC (If text message is sent instead of a poll)
         if update.message.text and update.message.text.startswith('/'):
-            await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
-            return ConversationHandler.END
+            first_word = update.message.text.split()[0].lower()
+            if first_word in VALID_COMMANDS:
+                return ConversationHandler.END  # Command ko apna kaam karne dein
+            else:
+                await update.message.reply_text("⚠️ Invalid command! Please send a poll or /cancel.")
+                return QUESTIONS
 
         poll = update.message.poll
         if poll.type != "quiz":
@@ -511,12 +529,14 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text("❌ Error: Question not found!")
             return QUESTIONS
         
-        # 🔥 NEW LOGIC: Check if text message is a command (excluding /skip and /done)
+        # 🔥 CHECK COMMAND LOGIC
         if update.message.text and update.message.text.startswith('/'):
-            cmd_check = update.message.text.lower()
-            if cmd_check not in ['/skip', '/done']:
-                await update.message.reply_text("⚠️ Setup interrupted because you sent a command.")
-                return ConversationHandler.END
+            first_word = update.message.text.split()[0].lower()
+            if first_word in VALID_COMMANDS:
+                return ConversationHandler.END  # Command ko apna kaam karne dein
+            else:
+                await update.message.reply_text("⚠️ Invalid command! Please send text, poll, or use valid commands.")
+                return PRE_MESSAGE
         
         # Check if a new poll is being sent - auto-skip pre-message
         if update.message.poll:
