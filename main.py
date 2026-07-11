@@ -339,9 +339,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ========================================
 # 🔴 NEW COMMAND: /quizzes
 # ========================================
+
 async def quizzes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display user's quizzes directly via /quizzes command"""
     try:
+        # 1. Group check: Send warning and block if used in group/supergroup
+        if update.effective_chat.type in ['group', 'supergroup']:
+            await update.message.reply_text(
+                "⚠️ यह कमांड केवल प्राइवेट चैट में काम करती है। कृपया मुझे पर्सनल मैसेज (DM) में `/quizzes` भेजें।"
+            )
+            return
+
         # Check for active quiz creation
         if check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
@@ -390,8 +398,9 @@ async def quizzes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Error in quizzes_command: {e}")
-        await update.message.reply_text("❌ Error loading quizzes. Please try again.")
-
+        if update.message:
+            await update.message.reply_text("❌ Error loading quizzes. Please try again.")
+            
 async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         title = update.message.text.strip()
