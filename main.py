@@ -2161,7 +2161,12 @@ async def main():
                     # 👈 Commands are filtered out so /undo doesn't transform into text stream payload
                     MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION) & ~filters.COMMAND, receive_pre_message)
                 ],
-                TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
+                
+                # 🟢 UPDATED: TIMER state me CallbackQueryHandler add kiya button input ke liye
+                TIMER: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text),
+                    CallbackQueryHandler(handle_timer_text, pattern="^timer_")  # 👈 Buttons capture karne ke liye yeh line jodi hai
+                ]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
         )
@@ -2229,7 +2234,7 @@ async def main():
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
 
-# 🛑 YEH WALA HISA (EXECUTION LOOPS CLOSURE) BILKUL SATH ME JAYEGA:
+# 🛑 EXECUTION LOOPS CLOSURE:
 if __name__ == '__main__':
     try:
         asyncio.run(main())
