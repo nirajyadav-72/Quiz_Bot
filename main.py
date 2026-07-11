@@ -610,9 +610,15 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text("❌ Error: Quiz must have at least 1 question!")
             return QUESTIONS
         
-        # ========================================
-        # 🟢 ADDED INLINE KEYBOARD BUTTONS FOR TIMER
-        # ========================================
+        # ====================================================================
+        # 🟢 FIXED: /done bhejte hi sabse pehle bottom question container ko hide karein
+        # ====================================================================
+        await update.message.reply_text(
+            "⏳ Saving questions and closing creator panel...", 
+            reply_markup=ReplyKeyboardRemove() # 👈 Isse "Create a Question" container permanently screen se hat jayega
+        )
+        
+        # Inline Buttons for timer setup
         timer_keyboard = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("⏱️ 15s", callback_data="timer_15"),
@@ -624,7 +630,7 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
             ]
         ])
         
-        # Custom message container sending alongside inline triggers
+        # Ab timer select karne ke liye main options bhejenge
         await update.message.reply_text(
             "⏱️ Please set a time limit for questions:\n\n"
             "Select an option from the buttons below or type any of these: 15, 30, 40, 60\n\n"
@@ -635,6 +641,7 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
     except Exception as e:
         logging.error(f"Error in finish_quiz_creation: {e}")
         return QUESTIONS
+        
 
 async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
