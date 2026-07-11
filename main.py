@@ -245,10 +245,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in start: {e}")
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
-                
-        
+
+# Help command Handel
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
+        chat_id = update.message.chat.id
+        chat_type = update.message.chat.type
+        is_private = str(chat_type) == "private" or (hasattr(chat_type, "value") and chat_type.value == "private")
+
         # Check for active quiz creation
         if check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
@@ -257,6 +261,20 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        # 🔥 SMART OLD HELP BUTTONS CLEANUP
+        if not is_private:
+            if chat_id in GROUP_GAMES:
+                game = GROUP_GAMES[chat_id]
+                if "help_message_id" in game:
+                    try:
+                        await context.bot.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=game["help_message_id"],
+                            reply_markup=None
+                        )
+                    except Exception:
+                        pass
+
         help_text = (
             "Help Menu\n\n"
             "Aap is bot se quizzes bana kar apne dosto ke sath groups me realtime khel sakte hain.\n\n"
@@ -269,11 +287,37 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👥 Add the bot to a group and start quizzes\n"
             "📢 For support, contact owner."
         )
-        keyboard = [
-            [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
-            [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
-        ]
-        await update.message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+        # Owner ka dynamic chat link layout (t.me/user?id=...)
+        owner_link = f"tg://user?id={OWNER_ID}"
+        owner_button = InlineKeyboardButton("📢 Contact Owner", url=owner_link)
+        
+        # 🔥 CHAT TYPE BASE PAR BUTTONS KA LOGIC
+        if is_private:
+            # Private chat: Total 3 Buttons (2 purane + 1 contact owner)
+            keyboard = [
+                [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
+                [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")],
+                [owner_button]
+            ]
+        else:
+            # Group: Total 2 Buttons (Add me + Contact owner)
+            bot_username = context.bot.username
+            add_url = f"https://t.me/{bot_username}?startgroup=true"
+            keyboard = [
+                [InlineKeyboardButton("➕ Add me in your group", url=add_url)],
+                [owner_button]
+            ]
+            
+        # Help message send karke use variable me liya
+        help_msg = await update.message.reply_text(help_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+        # Agar ye group hai, toh help message ki ID save karein taaki agli baar ye delete ho sake
+        if not is_private:
+            if chat_id not in GROUP_GAMES:
+                GROUP_GAMES[chat_id] = {}
+            GROUP_GAMES[chat_id]["help_message_id"] = help_msg.message_id
+            
     except Exception as e:
         logging.error(f"Error in help_command: {e}")
 
