@@ -593,6 +593,34 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         logging.error(f"Error in receive_pre_message: {e}")
         return QUESTIONS
         
+async def handle_undo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        quiz = context.user_data.get("quiz_build")
+        if quiz and quiz["questions"]:
+            quiz["questions"].pop()
+            
+            # BOTTOM CONTAINER (STILL IN QUESTIONS STATE)
+            poll_button = KeyboardButton(
+                text="Create a Question",
+                request_poll=KeyboardButtonPollType(type="quiz")
+            )
+            bottom_container = ReplyKeyboardMarkup(
+                [[poll_button]], 
+                resize_keyboard=True,
+                one_time_keyboard=False
+            )
+            
+            await update.message.reply_text(
+                f"↩️ Last question removed! Quiz now has {len(quiz['questions'])} question(s).\n\nSend next question or /done.",
+                reply_markup=bottom_container
+            )
+        else:
+            await update.message.reply_text("❌ No questions to remove!")
+        return QUESTIONS
+    except Exception as e:
+        logging.error(f"Error in handle_undo: {e}")
+        return QUESTIONS
+        
 async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         quiz = context.user_data.get("quiz_build", {})
