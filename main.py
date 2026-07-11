@@ -610,13 +610,25 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
             return QUESTIONS
         
         # ========================================
-        # 🔴 HIDE BOTTOM CONTAINER (LEAVING QUESTIONS STATE)
+        # 🟢 ADDED INLINE KEYBOARD BUTTONS FOR TIMER
         # ========================================
+        timer_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏱️ 15s", callback_data="timer_15"),
+                InlineKeyboardButton("⏱️ 30s", callback_data="timer_30")
+            ],
+            [
+                InlineKeyboardButton("⏱️ 40s", callback_data="timer_40"),
+                InlineKeyboardButton("⏱️ 60s", callback_data="timer_60")
+            ]
+        ])
+        
+        # Custom message container sending alongside inline triggers
         await update.message.reply_text(
             "⏱️ Please set a time limit for questions:\n\n"
-            "Type any of these: 15, 30, 40, 60\n\n"
+            "Select an option from the buttons below or type any of these: 15, 30, 40, 60\n\n"
             "Example: Type '30' for 30 seconds per question",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=timer_keyboard
         )
         return TIMER
     except Exception as e:
@@ -625,21 +637,32 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        text = update.message.text.strip()
+        # 🟢 CONDITION CHECK FOR BOTH TEXT AND BUTTON PAYLOADS
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer()
+            text = query.data.replace("timer_", "").strip()
+            msg_target = query.message
+            user_id = query.from_user.id
+        else:
+            text = update.message.text.strip()
+            msg_target = update.message
+            user_id = update.message.from_user.id
+
         time_map = {"15": 15, "30": 30, "40": 40, "60": 60}
         
         if text not in time_map:
-            await update.message.reply_text("❌ Invalid time. Please enter: 15, 30, 40, or 60")
+            await msg_target.reply_text("❌ Invalid time. Please enter: 15, 30, 40, or 60")
             return TIMER
         
         t_sec = time_map[text]
         quiz = context.user_data.get("quiz_build", {})
         
         if not quiz or not quiz.get("title"):
-            await update.message.reply_text("❌ Error: Quiz data missing. Please start over with /newquiz")
+            await msg_target.reply_text("❌ Error: Quiz data missing. Please start over with /newquiz")
             return ConversationHandler.END
 
-        user_id = context.user_data.get("quiz_build_creator_id", update.message.from_user.id)
+        user_id = context.user_data.get("quiz_build_creator_id", user_id)
 
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
@@ -654,14 +677,26 @@ async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.user_data.pop("quiz_build", None)
         context.user_data.pop("quiz_build_creator_id", None)
         
-        await update.message.reply_text("✅ Timer set! Quiz created 👍")
-        await show_summary_panel_text(update, context, qid)
+        # Clear buttons after click event triggers
+        if update.callback_query:
+            await msg_target.edit_reply_markup(reply_markup=None)
+
+        await msg_target.reply_text("✅ Timer set! Quiz created 👍")
+        
+        if update.callback_query:
+            await show_summary_panel_text(query, context, qid)
+        else:
+            await show_summary_panel_text(update, context, qid)
+            
         return ConversationHandler.END
     except Exception as e:
         logging.error(f"Error in handle_timer_text: {e}")
-        await update.message.reply_text("❌ Error saving quiz. Please try again.")
+        if update.callback_query:
+            await update.callback_query.message.reply_text("❌ Error saving quiz. Please try again.")
+        else:
+            await update.message.reply_text("❌ Error saving quiz. Please try again.")
         return TIMER
-
+        
 async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fetches and displays all quizzes created by the user with View buttons - 2 per row"""
     try:
