@@ -913,11 +913,15 @@ async def handle_confirm_private(update: Update, context: ContextTypes.DEFAULT_T
         logging.error(f"Error in handle_confirm_private: {e}")
         await query.answer("❌ Error starting quiz", show_alert=True)
 
+# ⚠️ SABSE UPAR APNI OWNER USER ID SET KAREIN
+OWNER_ID = 123456789  # Replace with your actual Telegram User ID
+
 async def handle_quiz_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show quiz status/statistics"""
     try:
         query = update.callback_query
         await query.answer()
+        user_id = query.from_user.id # Click karne wale ki user ID
         quiz_id = int(query.data.split("_")[1])
         
         conn = sqlite3.connect(DB_FILE)
@@ -936,24 +940,101 @@ async def handle_quiz_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
         
         status_text = (
-            f"📊 Quiz Status\n\n"
-            f"Title:** {escape_markdown(title)}\n"
-            f"Description: {escape_markdown(description) if description else 'No description'}\n"
-            f"Total Questions: {total_q[0]}\n"
-            f"Time per Q: {time_display}\n"
-            f"✅ Status: Active"
+            f"📊 *Quiz Status*\n\n"
+            f"*Title:* {escape_markdown(title)}\n"
+            f"*Description:* {escape_markdown(description) if description else 'No description'}\n"
+            f"*Total Questions:* {total_q[0]}\n"
+            f"*Time per Q:* {time_display}\n"
+            f"✅ *Status:* Active"
         )
+        
+        # Default button array (Sare users ke liye)
+        buttons = [[InlineKeyboardButton("🔙 Back", callback_data=f"backto_{quiz_id}")]]
+        
+        # 🟢 NAYA UPDATE: Agar user OWNER hai, toh uske liye ek extra button add hoga
+        if user_id == OWNER_ID:
+            buttons.insert(0, [InlineKeyboardButton("🌐 Global Group List", callback_data=f"owner_groups_{quiz_id}")])
         
         await query.edit_message_text(
             text=status_text,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Back", callback_data=f"backto_{quiz_id}")]
-            ]),
+            reply_markup=InlineKeyboardMarkup(buttons),
             parse_mode="Markdown"
         )
     except Exception as e:
         logging.error(f"Error in handle_quiz_status: {e}")
-        await query.answer("❌ Error", show_alert=True)
+        try:
+            await query.answer("❌ Error", show_alert=True)
+        except Exception:
+            pass
+
+# 🟢 Jab Owner "Global Group List" par click karega toh yeh chalega
+async def owner_global_groups(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        query = update.callback_query
+        await query.answer()
+        user_id = query.from_user.id
+        quiz_id = int(query.data.split("_")[2]) # Extract quiz_id for back button
+        
+        if user_id != OWNER_ID:
+            await query.message.reply_text("❌ Unauthorized! Only owner can view group logs.")
+            return
+            
+        await query.edit_message_text("🔍 Fetching active groups and invite links from database logs...")
+        
+        # Database se saare unique group/chat IDs nikalen (Jahan quiz run ya manage hue ho)
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # NOTE: Agar aapke paas shared groups track karne ki table alg hai toh 'quizzes' ki jagah wo table use karein
+        # Yahan hum maan kar chal rahe hain ki aap groups logs dynamic map kar rahe hain
+        try:
+            cursor.execute("SELECT DISTINCT creator_id FROM quizzes") # Default fallback structural reference
+            # Agar aapke database me group chat_id tracking table hai to exact column ka use karein
+            chat_rows = cursor.fetchall()
+        except Exception:
+            chat_rows = []
+        conn.close()
+
+        status_report = "📊 *Bot Active Groups Status Report*\n\n"
+        group_count = 0
+
+        # Agar aap static chat id test karna chahte hain to array populate kar sakte hain
+        for row in chat_rows:
+            # Agar chat_id integer format me store hai aur group ka hai (Negative IDs)
+            target_chat_id = row[0] 
+            
+            # Simple simulation check/api fallback verification
+            if str(target_chat_id).startswith("-"):
+                try:
+                    chat_details = await context.bot.get_chat(chat_id=target_chat_id)
+                    group_name = chat_details.title
+                    
+                    try:
+                        invite_link = chat_details.invite_link
+                        if not invite_link:
+                            invite_link = await context.bot.export_chat_invite_link(chat_id=target_chat_id)
+                    except Exception:
+                        invite_link = "No Link Permission 🚫"
+
+                    group_count += 1
+                    status_report += f"*{group_count}. 👥 Name:* {group_name}\n"
+                    status_report += f"🆔 *Chat ID:* `{target_chat_id}`\n"
+                    status_report += f"🔗 *Link:* {invite_link}\n"
+                    status_report += "━" * 15 + "\n"
+                except Exception:
+                    continue
+
+        if group_count == 0:
+            status_report += "⚠️ No active groups recorded or bot lacks group permissions to read data."
+        else:
+            status_report += f"\n📉 *Total Active Groups:* {group_count}"
+
+        # Back button lagaya hai taaki owner wapas quiz status menu me ja sake
+        back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Quiz", callback_data=f"status_{quiz_id}")]])
+        
+        await query.message.reply_text(text=status_report, reply_markup=back_btn, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Error in owner_global_groups: {e}")
 
 async def edit_quiz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
