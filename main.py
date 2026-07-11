@@ -2117,7 +2117,15 @@ async def main():
                 TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
                 DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
                 QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
-                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION | filters.POLL, receive_pre_message), CommandHandler("skip", receive_pre_message)],
+                
+                # 🟢 UPDATED: PRE_MESSAGE state ko modify kiya gaya hai 2 baar /undo support ke liye
+                PRE_MESSAGE: [
+                    CommandHandler("undo", handle_undo),  # 👈 /undo command ko sabse pehle rakha hai
+                    CommandHandler("skip", receive_pre_message),
+                    MessageHandler(filters.POLL, receive_pre_message),
+                    # 👈 Yahan commands ko exclude kiya (~filters.COMMAND) taaki /undo text na ban jaye
+                    MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION) & ~filters.COMMAND, receive_pre_message)
+                ],
                 TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
@@ -2186,10 +2194,4 @@ async def main():
     # 🔥 FIXED syntax error: Open 'try' block ko yahan handle aur close kiya hai
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
-
-if __name__ == '__main__':
-    try:
-        asyncio.run(main())
-    except (KeyboardInterrupt, SystemExit):
-        logging.info("Bot execution stopped clean.")
         
