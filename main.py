@@ -1815,13 +1815,27 @@ async def compile_group_leaderboard(chat_id, context):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        await update.message.reply_text("❌ Setup cancelled.", reply_markup=ReplyKeyboardRemove())
+        # 1. Quiz creation ka temporary data delete/clear karein
+        keys_to_clear = ["quiz_build", "quiz_build_creator_id"]
+        for key in keys_to_clear:
+            if key in context.user_data:
+                del context.user_data[key]
+
+        # 2. Setup Cancel ka message bhej kar purana reply keyboard hatayein
+        msg_obj = update.callback_query.message if update.callback_query else update.message
+        await msg_obj.reply_text("❌ Setup cancelled.", reply_markup=ReplyKeyboardRemove())
+        
+        # 3. 🔥 DIRECT START PANEL RETURN LOGIC
+        # Yeh aapke original 'start' function ko call karega, jisse wahi message aur buttons aayenge
+        await start(update, context)
+            
+        # 4. Conversation workflow end karein
         return ConversationHandler.END
+        
     except Exception as e:
         logging.error(f"Error in cancel: {e}")
         return ConversationHandler.END
-
-
+        
 async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Returns to the original main greeting menu"""
     try:
