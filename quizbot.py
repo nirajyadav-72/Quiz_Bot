@@ -2262,10 +2262,15 @@ async def main():
                     MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION) & ~filters.COMMAND, receive_pre_message)
                 ],
                 
-                # 🟢 UPDATED: TIMER state me CallbackQueryHandler add kiya button input ke liye
+                # 🟢 TIMER state me CallbackQueryHandler add kiya button input ke liye
                 TIMER: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text),
                     CallbackQueryHandler(handle_timer_text, pattern="^timer_")  # 👈 Buttons capture karne ke liye yeh line jodi hai
+                ],
+                
+                # 🔥 NEW NEGATIVE MARKING STATE INTEGRATED:
+                NEGATIVE: [
+                    CallbackQueryHandler(handle_negative_selection, pattern="^neg_")
                 ]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
