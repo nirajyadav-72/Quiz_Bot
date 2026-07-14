@@ -64,7 +64,8 @@ def init_db():
                 creator_id INTEGER,
                 title TEXT,
                 description TEXT,
-                timer INTEGER DEFAULT 30
+                timer INTEGER DEFAULT 30,
+                negative_value REAL DEFAULT 0.0 -- 👈 Yeh nayi column jodi hai
             )
         """)
         cursor.execute("""
@@ -79,17 +80,14 @@ def init_db():
                 FOREIGN KEY(quiz_id) REFERENCES quizzes(quiz_id)
             )
         """)
-        # 🔥 FIXED: Broadcast ki missing tables yahan jod di hain
         cursor.execute("CREATE TABLE IF NOT EXISTS broadcast_users (chat_id INTEGER PRIMARY KEY)")
         cursor.execute("CREATE TABLE IF NOT EXISTS broadcast_groups (chat_id INTEGER PRIMARY KEY)")
-        
         conn.commit()
         conn.close()
-        logging.info("Database initialized successfully")
+        logging.info("Database initialized successfully with negative_value column")
     except Exception as e:
         logging.error(f"Error initializing database: {e}")
-
-init_db()
+        
 
 def check_active_quiz_creation(user_id, context):
     """Check if user has an active quiz creation in progress"""
