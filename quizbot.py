@@ -1438,6 +1438,68 @@ async def save_edited_timer(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await update.message.reply_text("❌ Error updating timer. Please try again.")
         return ConversationHandler.END
 
+async def edit_negative_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show options to change negative marking from edit menu"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        quiz_id = int(query.data.split("_")[1])
+        context.user_data["editing_quiz_id"] = quiz_id
+        
+        neg_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("❌ No Negative (0.0)", callback_data=f"updeneg_{quiz_id}_0.0"),
+                InlineKeyboardButton("📉 1/4th (-0.25)", callback_data=f"updeneg_{quiz_id}_0.25")
+            ],
+            [
+                InlineKeyboardButton("📉 Half (-0.5)", callback_data=f"updeneg_{quiz_id}_0.5"),
+                InlineKeyboardButton("📉 Single (-1.0)", callback_data=f"updeneg_{quiz_id}_1.0")
+            ],
+            [
+                InlineKeyboardButton("📉 Heavy (-1.5)", callback_data=f"updeneg_{quiz_id}_1.5")
+            ],
+            [InlineKeyboardButton("Back 🔙", callback_data=f"edit_{quiz_id}")]
+        ])
+        
+        await query.message.reply_text(
+            "⚙️ **Update Negative Marking:**\n\nAap is quiz ke liye kaunsa naya negative marking rule set karna chahte hain?",
+            reply_markup=neg_keyboard,
+            parse_mode="Markdown"
+        )
+        return EDIT_NEGATIVE
+    except Exception as e:
+        logging.error(f"Error in edit_negative_trigger: {e}")
+        return ConversationHandler.END
+
+async def save_edited_negative(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Save the newly selected negative marking value to the database"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        new_neg_val = float(parts[2])
+        
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE quizzes SET negative_value = ? WHERE quiz_id = ?", (new_neg_val, quiz_id))
+        conn.commit()
+        conn.close()
+        
+        context.user_data.pop("editing_quiz_id", None)
+        await query.message.edit_reply_markup(reply_markup=None)
+        
+        neg_display = "Disabled" if new_neg_val == 0.0 else f"-{new_neg_val} per wrong answer"
+        await query.message.reply_text(f"✅ Quiz configuration updated successfully!\n📉 New Negative Marking: {neg_display}")
+        
+        if hasattr(query, 'message') and query.message:
+            await show_summary_panel(query, context, quiz_id)
+        return ConversationHandler.END
+    except Exception as e:
+        logging.error(f"Error in save_edited_negative: {e}")
+        return ConversationHandler.END
+
 
 # ==========================================
 # 🎯 SINGLE READY BUTTON DRIVEN ACTIVATION
