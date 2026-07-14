@@ -862,6 +862,50 @@ async def handle_start_private(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error in handle_start_private: {e}")
         await query.answer("❌ Error", show_alert=True)
 
+async def handle_negative_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        neg_val = float(query.data.replace("neg_", "").strip())
+        quiz = context.user_data.get("quiz_build", {})
+        user_id = context.user_data.get("quiz_build_creator_id")
+        
+        if not quiz or not quiz.get("title"):
+            await query.message.reply_text("❌ Error: Quiz data missing. Start over with /newquiz")
+            return ConversationHandler.END
+
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        # negative_value column ke sath data insert kiya
+        cursor.execute(
+            "INSERT INTO quizzes (creator_id, title, description, timer, negative_value) VALUES (?, ?, ?, ?, ?)", 
+            (user_id, quiz["title"], quiz["description"], quiz["timer"], neg_val)
+        )
+        qid = cursor.lastrowid
+        
+        for q in quiz["questions"]:
+            cursor.execute(
+                "INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, pre_message) VALUES (?, ?, ?, ?, ?, ?)", 
+                (qid, q["text"], json.dumps(q["options"]), q["correct"], q["explanation"], q["pre_message"])
+            )
+        conn.commit()
+        conn.close()
+        
+        context.user_data.pop("quiz_build", None)
+        context.user_data.pop("quiz_build_creator_id", None)
+        
+        await query.message.edit_reply_markup(reply_markup=None)
+        
+        neg_display = "Disabled" if neg_val == 0.0 else f"-{neg_val} per wrong answer"
+        await query.message.reply_text(f"✅ Quiz Created Successfully!\n⏱ Timer: {quiz['timer']}s\n📉 Negative Marking: {neg_display}")
+        
+        await show_summary_panel_text(query, context, qid)
+        return ConversationHandler.END
+    except Exception as e:
+        logging.error(f"Error in handle_negative_selection: {e}")
+        return ConversationHandler.END
+    
 async def handle_confirm_private(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Confirm and start private quiz with 1 user"""
     try:
