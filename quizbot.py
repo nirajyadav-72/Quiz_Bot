@@ -32,10 +32,18 @@ DB_FILE = "quiz_bot.db"
 # Global dictionary for active group games memory
 GROUP_GAMES = {}
 
-# Conversation flow states
+# ====================================================================
+# 🔥 FULLY OPERATIONAL GLOBAL CONVERSATION STATES (AUTOMATIC NO-OVERLAP SEQUENCE)
+# ====================================================================
+# New quiz build flow states (0 to 5)
 TITLE, DESCRIPTION, QUESTIONS, PRE_MESSAGE, TIMER, NEGATIVE = range(6)
-EDIT_TITLE, EDIT_DESC, EDIT_TIMER = range(5, 8)
-EDIT_QUESTION_TEXT, EDIT_QUESTION_OPTIONS, EDIT_QUESTION_CORRECT, EDIT_QUESTION_EXPLANATION, EDIT_QUESTION_PRE_MESSAGE = range(8, 13)
+
+# Main quiz edit panel menu flows (6 to 9)
+EDIT_TITLE, EDIT_DESC, EDIT_TIMER, EDIT_NEGATIVE = range(6, 10)
+
+# Question inner attributes edit panels (10 to 14)
+EDIT_QUESTION_TEXT, EDIT_QUESTION_OPTIONS, EDIT_QUESTION_CORRECT, EDIT_QUESTION_EXPLANATION, EDIT_QUESTION_PRE_MESSAGE = range(10, 15)
+# ====================================================================
 
 def escape_markdown(text):
     """Escape special characters for Telegram Markdown"""
@@ -65,7 +73,7 @@ def init_db():
                 title TEXT,
                 description TEXT,
                 timer INTEGER DEFAULT 30,
-                negative_value REAL DEFAULT 0.0 -- 👈 Yeh nayi column jodi hai
+                negative_value REAL DEFAULT 0.0 -- 👈 Nayi col successfully configuration synced
             )
         """)
         cursor.execute("""
@@ -88,7 +96,6 @@ def init_db():
     except Exception as e:
         logging.error(f"Error initializing database: {e}")
         
-
 def check_active_quiz_creation(user_id, context):
     """Check if user has an active quiz creation in progress"""
     return "quiz_build" in context.user_data and context.user_data["quiz_build"].get("title")
