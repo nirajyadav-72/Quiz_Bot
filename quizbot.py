@@ -998,20 +998,21 @@ async def edit_quiz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         quiz_id = int(query.data.split("_")[1])
         
         keyboard = [
-            [InlineKeyboardButton("Edit Question", callback_data=f"edquestion_{quiz_id}")],
-            [InlineKeyboardButton("Edit Title", callback_data=f"edtitle_{quiz_id}")],
-            [InlineKeyboardButton("Edit Description", callback_data=f"eddesc_{quiz_id}")],
-            [InlineKeyboardButton("Edit Timer", callback_data=f"edtime_{quiz_id}")],
+            [InlineKeyboardButton("Edit Question 📖", callback_data=f"edquestion_{quiz_id}")],
+            [InlineKeyboardButton("Edit Title 📝", callback_data=f"edtitle_{quiz_id}")],
+            [InlineKeyboardButton("Edit Description ℹ️", callback_data=f"eddesc_{quiz_id}")],
+            [InlineKeyboardButton("Edit Timer ⏱", callback_data=f"edtime_{quiz_id}")],
+            [InlineKeyboardButton("Edit Negative Marking 📉", callback_data=f"edneg_{quiz_id}")], # 👈 Yeh naya button joda hai
             [InlineKeyboardButton("Back 🔙", callback_data=f"backto_{quiz_id}")]
         ]
         await query.edit_message_text(
-            text="⚙️ Edit Quiz Menu\n\nAap is quiz ka kya badalna chahte hain? Niche se chunyein:",
+            text="⚙️ **Edit Quiz Menu**\n\nAap is quiz ka kya badalna chahte hain? Niche se chunyein:",
             reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
         )
     except Exception as e:
         logging.error(f"Error in edit_quiz_menu: {e}")
         await query.answer("❌ Error", show_alert=True)
-
+        
 async def back_to_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
