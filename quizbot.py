@@ -2338,19 +2338,21 @@ async def main():
                     CallbackQueryHandler(handle_timer_text, pattern="^timer_")  # 👈 Buttons capture karne ke liye yeh line jodi hai
                 ],
                 
-                # 🔥 NEW NEGATIVE MARKING STATE INTEGRATED:
+                # 🔥 NEW NEGATIVE MARKING STATE INTEGRATED (CREATION FLOW):
                 NEGATIVE: [
-                    CallbackQueryHandler(handle_negative_selection, pattern="^neg_") # 👈 Yeh button click ko catch karega
+                    CallbackQueryHandler(handle_negative_selection, pattern="^neg_")
                 ]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
         )
 
+        # 🔥 UPDATED EDIT FLOW CONVERSATION HANDLER
         quiz_edit_flow_handler = ConversationHandler(
             entry_points=[
                 CallbackQueryHandler(edit_title_trigger, pattern="^edtitle_"),
                 CallbackQueryHandler(edit_desc_trigger, pattern="^eddesc_"),
                 CallbackQueryHandler(edit_timer_trigger, pattern="^edtime_"),
+                CallbackQueryHandler(edit_negative_trigger, pattern="^edneg_"), # 👈 Nayi trigger line register ki hai
                 CallbackQueryHandler(edit_pre_message_trigger, pattern="^editpre_"),
                 CallbackQueryHandler(edit_explanation_trigger, pattern="^editexpl_")
             ],
@@ -2358,6 +2360,8 @@ async def main():
                 EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_title)],
                 EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_desc)],
                 EDIT_TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_timer)],
+                # 🔥 NEW RESPONSE STATE FOR EDIT FLOW:
+                EDIT_NEGATIVE: [CallbackQueryHandler(save_edited_negative, pattern="^updeneg_")],
                 EDIT_QUESTION_PRE_MESSAGE: [MessageHandler(filters.TEXT, save_pre_message)],
                 EDIT_QUESTION_EXPLANATION: [MessageHandler(filters.TEXT, save_explanation)]
             },
@@ -2409,6 +2413,7 @@ async def main():
 
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
+    
         
 # 🛑 EXECUTION LOOPS CLOSURE:
 if __name__ == '__main__':
