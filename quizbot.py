@@ -1763,7 +1763,6 @@ async def send_next_group_poll(chat_id, context):
         logging.error(f"Error in send_next_group_poll: {e}")
 
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Track poll answers from ALL users who participate, even if they didn't click Ready"""
     try:
         ans = update.poll_answer
         pid = ans.poll_id
@@ -1776,18 +1775,18 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 correct_idx = poll_info["correct_idx"]
                 question_idx = poll_info["question_index"]
                 
-                # 🔴 FIX: Auto-add user to joined_users if they participate
                 if uid not in game["joined_users"]:
                     game["joined_users"][uid] = user_name
-                    game["scores"][uid] = {"score": 0, "total_time": 0.0}
+                    # 🔥 Safe initialization for scoring
+                    game["scores"][uid] = {"score": 0, "total_time": 0.0, "wrong": 0, "points": 0.0}
                     game["user_answers"][uid] = {}
                     logging.info(f"New participant added: {user_name} (ID: {uid})")
                 
                 if uid not in game["user_answers"]:
                     game["user_answers"][uid] = {}
                 
-                # Numeric single index list matching evaluation mapping conversion
-                selected_idx = ans.option_ids[0] if ans.option_ids else -1
+                selected_idx = ans.option_ids if ans.option_ids else -1
+                
                 game["user_answers"][uid][question_idx] = {
                     "selected": selected_idx,  
                     "correct_idx": correct_idx,
