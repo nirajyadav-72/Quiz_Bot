@@ -1803,9 +1803,11 @@ async def compile_group_leaderboard(chat_id, context):
         
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("SELECT title FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
-        quiz_title_data = cursor.fetchone()
-        quiz_title = quiz_title_data[0] if quiz_title_data else "Quiz"
+        # Title ke sath negative_value column fetch ki
+        cursor.execute("SELECT title, negative_value FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
+        quiz_data = cursor.fetchone()
+        quiz_title = quiz_data[0] if quiz_data else "Quiz"
+        db_neg_multiplier = quiz_data[1] if (quiz_data and len(quiz_data) > 1) else 0.0
         
         cursor.execute("SELECT question_text, options, correct_answer FROM questions WHERE quiz_id = ?", (game["quiz_id"],))
         questions = cursor.fetchall()
@@ -1817,9 +1819,8 @@ async def compile_group_leaderboard(chat_id, context):
             correct_answers[idx] = options.index(correct_ans)
         
         final_scores = {}
-        # Include ALL users who attempted the quiz
         for uid in game["user_answers"].keys():
-            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0}
+            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0, "points": 0.0}
 
         for uid, user_answers in game["user_answers"].items():
             score = 0
@@ -1835,52 +1836,44 @@ async def compile_group_leaderboard(chat_id, context):
                     start_time = game["question_start_times"].get(question_idx, answer_data["timestamp"])
                     if isinstance(start_time, datetime):
                         elapsed = (answer_data["timestamp"] - start_time).total_seconds()
-                        total_time += max(0, elapsed)  # Prevent negative times
+                        total_time += max(0, elapsed)
                 else:
                     wrong += 1
             
-            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time}
+            # 🔥 Core Formula: Right - (Wrong * Selected Button Value)
+            calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
+            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
         
-        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:50]
+        # 🔥 Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
+        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
         
-        # ============ NEW RESULT DESIGN ============
-        header = f"🏁 The quiz '{escape_markdown(quiz_title)}' has finished!\n\n"
+        header = f"🏁 The quiz '{escape_markdown(quiz_title)}' has finished!\n"
+        header += f"📉 *Negative Marking Applied: -{db_neg_multiplier} per wrong answer*\n\n"
         
-        # Count total questions answered
         total_questions_answered = len(questions)
         subheader = f"📋 {total_questions_answered} questions answered\n"
         subheader += f"👥 Total Participants: {len(final_scores)}\n\n"
         
-        # Build leaderboard with new design
         leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_name = game["joined_users"].get(uid, "Unknown User")
             score = meta["score"]
+            wrong_count = meta["wrong"]
+            points = meta["points"]
             total_time = format_time(meta["total_time"])
             
-            # Determine rank/medal
-            if idx == 1:
-                rank_icon = "🥇."
-            elif idx == 2:
-                rank_icon = "🥈."
-            elif idx == 3:
-                rank_icon = "🥉."
-            else:
-                rank_icon = f"{idx}."
+            rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
             
-            # Format entry with new design
+            # Display Layout according to final score & time taken
             leaderboard += f"{rank_icon}  {user_name}\n"
-            leaderboard += f"          Right Ans: {score}/{total_questions_answered}\n"
-            leaderboard += f"          To take time: ({total_time})\n\n"
+            leaderboard += f"          ★ Final Score: `{points:.2f} Marks`\n"
+            leaderboard += f"          Right Ans: {score}/{total_questions_answered}  |  Wrong Ans: {wrong_count}\n"
+            leaderboard += f"          Total Time Taken: ({total_time})\n\n"
         
-        # Add congratulations footer
         footer = "🏆 Congratulations to all participants!"
-        
-        # Combine all parts
         full_message = header + subheader + leaderboard + footer
         
-        kb = [[InlineKeyboardButton("📢 Share Score", url="https://t.me/share/url?url=I%20played%20Laado%20Quiz%20Bot%20Challenge!")]]
-        
+        kb = [[InlineKeyboardButton("📢 Share Score", url="https://t.me!")]]
         await context.bot.send_message(chat_id=chat_id, text=full_message, reply_markup=InlineKeyboardMarkup(kb))
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
