@@ -640,20 +640,16 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
         logging.error(f"Error in finish_quiz_creation: {e}")
         return QUESTIONS
         
-
 async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        # 🟢 CONDITION CHECK FOR BOTH TEXT AND BUTTON PAYLOADS
         if update.callback_query:
             query = update.callback_query
             await query.answer()
             text = query.data.replace("timer_", "").strip()
             msg_target = query.message
-            user_id = query.from_user.id
         else:
             text = update.message.text.strip()
             msg_target = update.message
-            user_id = update.message.from_user.id
 
         time_map = {"15": 15, "30": 30, "40": 40, "60": 60}
         
@@ -661,47 +657,38 @@ async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await msg_target.reply_text("❌ Invalid time. Please enter: 15, 30, 40, or 60")
             return TIMER
         
-        t_sec = time_map[text]
-        quiz = context.user_data.get("quiz_build", {})
+        # Timer value temporary save karein
+        context.user_data["quiz_build"]["timer"] = time_map[text]
         
-        if not quiz or not quiz.get("title"):
-            await msg_target.reply_text("❌ Error: Quiz data missing. Please start over with /newquiz")
-            return ConversationHandler.END
-
-        user_id = context.user_data.get("quiz_build_creator_id", user_id)
-
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("INSERT INTO quizzes (creator_id, title, description, timer) VALUES (?, ?, ?, ?)", (user_id, quiz["title"], quiz["description"], t_sec))
-        qid = cursor.lastrowid
-        for q in quiz["questions"]:
-            cursor.execute("INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, pre_message) VALUES (?, ?, ?, ?, ?, ?)", 
-                           (qid, q["text"], json.dumps(q["options"]), q["correct"], q["explanation"], q["pre_message"]))
-        conn.commit()
-        conn.close()
-        
-        context.user_data.pop("quiz_build", None)
-        context.user_data.pop("quiz_build_creator_id", None)
-        
-        # Clear buttons after click event triggers
         if update.callback_query:
             await msg_target.edit_reply_markup(reply_markup=None)
 
-        await msg_target.reply_text("✅ Timer set! Quiz created 👍")
+        # 🔥 Custom buttons aapki demand ke mutabik: 0.25, 0.5, 1.0, 1.5
+        neg_keyboard = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("❌ No Negative (0.0)", callback_data="neg_0.0"),
+                InlineKeyboardButton("📉 1/4th (-0.25)", callback_data="neg_0.25")
+            ],
+            [
+                InlineKeyboardButton("📉 Half (-0.5)", callback_data="neg_0.5"),
+                InlineKeyboardButton("📉 Single (-1.0)", callback_data="neg_1.0")
+            ],
+            [
+                InlineKeyboardButton("📉 Heavy (-1.5)", callback_data="neg_1.5")
+            ]
+        ])
         
-        if update.callback_query:
-            await show_summary_panel_text(query, context, qid)
-        else:
-            await show_summary_panel_text(update, context, qid)
-            
-        return ConversationHandler.END
+        await msg_target.reply_text(
+            "🛑 **Select Negative Marking Schema:**\n\n"
+            "Aap is quiz ke liye kitni negative marking set karna chahte hain? Niche diye gaye buttons se choose karein:",
+            reply_markup=neg_keyboard,
+            parse_mode="Markdown"
+        )
+        return NEGATIVE 
     except Exception as e:
         logging.error(f"Error in handle_timer_text: {e}")
-        if update.callback_query:
-            await update.callback_query.message.reply_text("❌ Error saving quiz. Please try again.")
-        else:
-            await update.message.reply_text("❌ Error saving quiz. Please try again.")
         return TIMER
+        
         
 async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fetches and displays all quizzes created by the user with View buttons - 2 per row"""
