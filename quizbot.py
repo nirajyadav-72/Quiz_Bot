@@ -2270,7 +2270,7 @@ async def main():
                 
                 # 🔥 NEW NEGATIVE MARKING STATE INTEGRATED:
                 NEGATIVE: [
-                    CallbackQueryHandler(handle_negative_selection, pattern="^neg_")
+                    CallbackQueryHandler(handle_negative_selection, pattern="^neg_") # 👈 Yeh button click ko catch karega
                 ]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
@@ -2339,7 +2339,7 @@ async def main():
 
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
-
+        
 # 🛑 EXECUTION LOOPS CLOSURE:
 if __name__ == '__main__':
     try:
