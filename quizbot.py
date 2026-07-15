@@ -1980,7 +1980,7 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 
     except Exception as e:
         logging.error(f"Error in track_poll_answers: {e}")
-        
+
 async def compile_group_leaderboard(chat_id, context):
     try:
         game = GROUP_GAMES.get(chat_id)
@@ -2043,12 +2043,12 @@ async def compile_group_leaderboard(chat_id, context):
         
         total_questions_answered = len(questions)
         subheader = f"📋 {total_questions_answered} questions answered\n"
-        subheader += f"👥 Total Participants: {len(final_scores)}\n\n"
+        subheader += f"👥 Total Participants: {len(final_scores)}\n"
+        subheader += f"━" * 22 + "\n\n"
         
         leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_name = game["joined_users"].get(uid, "Unknown User")
-            # Safe markdown username escape to avoid formatting breaks
             clean_username = escape_markdown(user_name)
             score = meta["score"]
             wrong_count = meta["wrong"]
@@ -2057,18 +2057,29 @@ async def compile_group_leaderboard(chat_id, context):
             
             rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
             
-            # Display Layout according to final score & time taken
-            leaderboard += f"{rank_icon}  {clean_username}\n"
-            leaderboard += f"          ★ Final Score: `{points:.2f} Marks`\n"
-            leaderboard += f"          Right Ans: {score}/{total_questions_answered}  |  Wrong Ans: {wrong_count}\n"
-            leaderboard += f"          Total Time Taken: ({total_time})\n\n"
+            # Padding string mapping structure alignment
+            val_score = f"{points:.2f}"
+            val_right = f"{score}"  # 🌟 FIX: Total Q count hata kar sirf absolute count rakha hai
+            val_wrong = f"{wrong_count}"
+            val_time  = f"{total_time}"
+            
+            # 💎 BOX GRID GENERATOR SYSTEM
+            leaderboard += f"{rank_icon}  *{clean_username}*\n"
+            leaderboard += "```text\n"
+            leaderboard += "┌──────────────────────────────┐\n"
+            leaderboard += f"│  Final Score      : {val_score:<8} │\n"
+            leaderboard += f"│  Right Answers    : {val_right:<8} │\n"
+            leaderboard += f"│  Wrong Answers    : {val_wrong:<8} │\n"
+            leaderboard += f"│  Total Time Taken : {val_time:<8} │\n"
+            leaderboard += "└──────────────────────────────┘\n"
+            leaderboard += "```\n"
         
         footer = "🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
         # 🌟 FIX: URL format ko completely valid aur meaningful share target me convert kiya
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        kb = [[InlineKeyboardButton("📢 Challenge Others (Share Quiz)", url=share_url)]]
+        kb = [[InlineKeyboardButton("✨ start again", url=share_url)]]
         
         # Added parse_mode to correctly render formatting styles
         await context.bot.send_message(
@@ -2080,7 +2091,7 @@ async def compile_group_leaderboard(chat_id, context):
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
-                  
+            
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
