@@ -773,16 +773,42 @@ async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_view_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles opening summary panel from the quiz list"""
+    query = update.callback_query
     try:
-        query = update.callback_query
+        # Callback query format validation (Bug #6 Fix)
+        if not query.data or "_" not in query.data:
+            await query.answer("❌ Invalid callback data format", show_alert=True)
+            return
+            
+        parts = query.data.split("_")
+        if len(parts) < 2:
+            await query.answer("❌ Invalid callback data format", show_alert=True)
+            return
+
+        # Quiz ID parse aur check
+        try:
+            quiz_id = int(parts[1])
+        except (ValueError, IndexError):
+            await query.answer("❌ Invalid quiz ID format", show_alert=True)
+            return
+
+        # Sab sahi hone par process aage badhayenge
         await query.answer()
-        quiz_id = int(query.data.split("_")[1])
-        await query.message.delete()
+        
+        try:
+            await query.message.delete()
+        except Exception as delete_error:
+            logging.warning(f"Could not delete message in handle_view_quiz_callback: {delete_error}")
+
         await show_summary_panel(query, context, quiz_id)
+
     except Exception as e:
         logging.error(f"Error in handle_view_quiz_callback: {e}")
-        await query.answer("❌ Error loading quiz", show_alert=True)
-
+        try:
+            await query.answer("❌ Error loading quiz", show_alert=True)
+        except Exception:
+            pass
+            
 async def show_summary_panel(query, context, quiz_id):
     try:
         conn = sqlite3.connect(DB_FILE)
