@@ -1743,10 +1743,19 @@ async def send_next_group_poll(chat_id, context):
         
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
+        
+        # FIX 3: fetchone() null ho sakta hai agar quiz delete ho gayi ho ya ID galat ho
         cursor.execute("SELECT title FROM quizzes WHERE quiz_id = ?", (qid,))
-        quiz_title = cursor.fetchone()[0] # 🛠️ Fixed: Added [0] back to get proper string
+        quiz_title_data = cursor.fetchone()
+        if not quiz_title_data:
+            logging.error(f"Quiz title not found for quiz_id: {qid}")
+            conn.close()
+            return
+        quiz_title = quiz_title_data[0]
+        
         cursor.execute("SELECT timer FROM quizzes WHERE quiz_id = ?", (qid,))
         timer_data = cursor.fetchone()
+        
         cursor.execute("SELECT question_text, options, correct_answer, pre_message, explanation FROM questions WHERE quiz_id = ?", (qid,))
         questions = cursor.fetchall()
         conn.close()
@@ -1759,7 +1768,7 @@ async def send_next_group_poll(chat_id, context):
             await compile_group_leaderboard(chat_id, context)
             return
 
-        # 🛠️ Fixed: Added [0] to extract correct integer from database tuple
+        # [0] to extract correct integer from database tuple
         raw_timer = timer_data[0] if (timer_data and isinstance(timer_data, tuple)) else 30
         
         # 🕒 SAFETY CHECK: Telegram minimum 10 seconds demand karta hai
@@ -1777,6 +1786,10 @@ async def send_next_group_poll(chat_id, context):
         game["question_start_times"][game["current_q"]] = datetime.now()
         game["start_time"] = datetime.now()
         
+        # FIX 8: explanation agar khali string ("") ya spaces ka string hua toh Telegram error dega.
+        # Isliye use strip() karke properly None set kiya.
+        clean_explanation = explanation.strip() if explanation and str(explanation).strip() else None
+        
         # 🚀 FINAL FIXED POLL: Live countdown bar integrated perfectly
         poll_msg = await context.bot.send_poll(
             chat_id=chat_id, 
@@ -1784,9 +1797,9 @@ async def send_next_group_poll(chat_id, context):
             options=options, 
             type="quiz", 
             correct_option_id=correct_idx,
-            explanation=explanation if explanation else None, 
+            explanation=clean_explanation, 
             is_anonymous=False,
-            open_period=timer # 👈 Ab yeh line bina kisi error ke mast chalegi!
+            open_period=timer
         )
         
         # Store poll message ID for later closing
@@ -1808,10 +1821,11 @@ async def send_next_group_poll(chat_id, context):
             
             # Check if any user answered this question
             answers_received = False
-            for uid, user_answers in game["user_answers"].items():
-                if game["current_q"] in user_answers:
-                    answers_received = True
-                    break
+            if "user_answers" in game:
+                for uid, user_answers in game["user_answers"].items():
+                    if game["current_q"] in user_answers:
+                        answers_received = True
+                        break
             
             # 🔴 CLOSE POLL EXPLICITLY - This LOCKS the poll options
             try:
@@ -1848,7 +1862,7 @@ async def send_next_group_poll(chat_id, context):
             asyncio.create_task(send_next_group_poll(chat_id, context))
     except Exception as e:
         logging.error(f"Error in send_next_group_poll: {e}")
-
+        
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         ans = update.poll_answer
