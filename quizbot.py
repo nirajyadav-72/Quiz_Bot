@@ -2175,7 +2175,7 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     escaped_title = escape_markdown(title)
                     escaped_desc = escape_markdown(description) if description else "No description"
                     
-                    # 🌟 FIX: List me se click karte hi ye text aur panel direct chat me share ho jayega
+                    # List me se click karte hi ye text aur panel direct chat me share ho jayega
                     share_message_text = (
                         f"🎲 Quiz {escaped_title}\n\n"
                         f"💌 **Description:** {escaped_desc}\n"
@@ -2211,7 +2211,12 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
         # CASE 2: Single Quiz Share handler (`quiz_12` query trigger hone par)
         if query.startswith("quiz_"):
-            quiz_id = query.replace("quiz_", "")
+            # 🌟 FIX: String id ko extract karke safely int me convert kiya taaki SQL query NULL return na kare
+            try:
+                quiz_id = int(query.replace("quiz_", ""))
+            except ValueError:
+                conn.close()
+                return  # Malformed input par safely exit karein
             
             cursor.execute("SELECT title, description, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
             quiz_data = cursor.fetchone()
@@ -2261,7 +2266,7 @@ async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 
     except Exception as e:
         logging.error(f"Error in inline_query_handler: {e}")
-
+        
 async def owner_status_text_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Direct text command /status for the Owner to view all groups using broadcast_groups table"""
     try:
