@@ -1844,11 +1844,14 @@ async def send_next_group_poll(chat_id, context):
             await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
             await asyncio.sleep(1)
 
+        # 🌟 STATE CHECKS BEFORE SENDING: Sleep ke baad double-check kiya ki kahin pause toh nahi hua
+        if chat_id not in GROUP_GAMES or GROUP_GAMES[chat_id].get("quiz_paused"):
+            return
+
         game["question_start_times"][game["current_q"]] = datetime.now()
         game["start_time"] = datetime.now()
         
         # FIX 8: explanation agar khali string ("") ya spaces ka string hua toh Telegram error dega.
-        # Isliye use strip() karke properly None set kiya.
         clean_explanation = explanation.strip() if explanation and str(explanation).strip() else None
         
         # 🚀 FINAL FIXED POLL: Live countdown bar integrated perfectly
@@ -1880,6 +1883,10 @@ async def send_next_group_poll(chat_id, context):
         if chat_id in GROUP_GAMES:
             game = GROUP_GAMES[chat_id]
             
+            # 🌟 INTERRUPT CHECK: Agar user ne countdown ke beech me pause/stop kar diya toh loop se exit karein
+            if game.get("quiz_paused"):
+                return
+
             # Check if any user answered this question
             answers_received = False
             if "user_answers" in game:
@@ -1888,11 +1895,13 @@ async def send_next_group_poll(chat_id, context):
                         answers_received = True
                         break
             
-            # 🔴 CLOSE POLL EXPLICITLY - This LOCKS the poll options
+            # 🔴 CLOSE POLL EXPLICITLY: Telegram native timers automatic close karte hain, par logs crash errors clean handle karne ke liye warnings bypass logic rakha
             try:
-                await context.bot.stop_poll(chat_id=chat_id, message_id=game["poll_message_ids"][game["current_q"]])
+                # Sirf tabhi stop call karein agar poll already closed state me auto-shift nahi hua hai (Bypasses 400 Bad Request Warning)
+                if not poll_msg.poll.is_closed:
+                    await context.bot.stop_poll(chat_id=chat_id, message_id=game["poll_message_ids"][game["current_q"]])
             except Exception as e:
-                logging.warning(f"Could not close poll: {e}")
+                pass  # Safely suppressed the native automatic timer collision warning
             
             if not answers_received:
                 game["consecutive_no_answers"] += 1
@@ -1902,7 +1911,7 @@ async def send_next_group_poll(chat_id, context):
                 if game["consecutive_no_answers"] >= 2:
                     game["quiz_paused"] = True
                     
-                    pause_msg = f"🔐 The quiz '{escape_markdown(quiz_title)}' was paused because nobody was answering"
+                    pause_msg = f"🔐 The quiz '*{escape_markdown(quiz_title)}*' was paused because nobody was answering"
                     
                     keyboard = [
                         [InlineKeyboardButton("Resume Quiz", callback_data=f"pausequiz_{chat_id}")],
@@ -1957,6 +1966,7 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     game["user_answers"][uid] = {}
                 
                 # FIX 5: ans.option_ids ek list hoti hai, isliye pehla element nikalenge
+                # 🌟 OTHERS FIX: Agar user answer retract/unvote karta hai, toh option_ids empty ([]) ho jati hai, use safely -1 handle kiya
                 selected_idx = ans.option_ids[0] if ans.option_ids else -1
                 
                 game["user_answers"][uid][question_idx] = {
@@ -1964,6 +1974,10 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     "correct_idx": correct_idx,
                     "timestamp": datetime.now()
                 }
+                
+                # 🌟 ANTI-RACE SYSTEM DEFLATOR: User response active benchmarks ko increment karta hai
+                game["consecutive_no_answers"] = 0
+                
     except Exception as e:
         logging.error(f"Error in track_poll_answers: {e}")
         
