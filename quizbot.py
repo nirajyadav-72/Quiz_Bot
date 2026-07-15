@@ -282,8 +282,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # 🌟 FIX: Welcome panel ke buttons ko bhi custom color diya (Blue aur Green)
         if is_private:
             kb = [
-                [{"text": "🚀 Create New Quiz 🚀", "callback_data": "btn_newquiz", "style": "success"}],
-                [{"text": "📚 View My Quizzes 📚", "callback_data": "btn_viewquizzes", "style": "primary"}]
+                [{"text": "🚀 Create New Quiz", "callback_data": "btn_newquiz", "style": "success"}],
+                [{"text": "📚 View My Quizzes", "callback_data": "btn_viewquizzes", "style": "primary"}]
             ]
         else:
             bot_username = context.bot.username
@@ -2176,7 +2176,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         return ConversationHandler.END
         
 async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Returns to the original main greeting menu"""
+    """Returns to the original main greeting menu with native colored buttons"""
     try:
         query = update.callback_query
         
@@ -2191,15 +2191,17 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "👥 *Add the bot to a group and start quizzes*\n"
             f"📢 *Owner Details:* ID `{OWNER_ID}`"
         )
-        keyboard = [
-            [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
-            [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
+        
+        # 🌟 FIX: Raw dictionary payload use kiya buttons ko custom color dene ke liye (Bypassing validation)
+        kb = [
+            [{"text": "🚀 Create New Quiz", "callback_data": "btn_newquiz", "style": "success"}],     # Hara (Green) color
+            [{"text": "📚 View My Quizzes", "callback_data": "btn_viewquizzes", "style": "primary"}]  # Neela (Blue) color
         ]
         
-        # ✅ FIXED: parse_mode ko "Markdown" (M capital) kiya aur timeouts ko api_kwargs me daala
+        # ✅ FIXED: parse_mode ko "Markdown" kiya aur timeouts ko api_kwargs me daala
         await query.edit_message_text(
             text=welcome_text, 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
+            reply_markup=InlineKeyboardMarkup(kb), 
             parse_mode="Markdown",
             api_kwargs={
                 "read_timeout": 20,
