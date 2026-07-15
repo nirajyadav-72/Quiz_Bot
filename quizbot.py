@@ -155,24 +155,35 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         conn.close()
 
-        # 🔥 SMART OLD BUTTONS CLEANUP (PURANE WELCOME MESSAGE KE BUTTONS GAYAB)
+        # 🔥 SMART OLD BUTTONS CLEANUP (PANEL RAHEGA, SIRF BUTTONS GAYAB)
         if not is_private:
             if chat_id in GROUP_GAMES:
                 game = GROUP_GAMES[chat_id]
                 
-                # Check karein agar purane welcome message ki ID save hai toh uske buttons hatayein
+                # 1. Purane Welcome Message ke buttons remove karein
                 if "welcome_message_id" in game:
                     try:
                         await context.bot.edit_message_reply_markup(
                             chat_id=chat_id,
                             message_id=game["welcome_message_id"],
-                            reply_markup=None  # Isse purane buttons permanently delete ho jayenge
+                            reply_markup=None
                         )
                     except Exception:
                         pass
                 
-                # Agar koi purana pause message bhi hai toh uske buttons bhi hata dete hain
-                if game.get("quiz_paused") and "pause_message_id" in game:
+                # 2. Agar koi dynamic ready panel active hai toh uske buttons bhee remove karein
+                if "setup_message_id" in game:
+                    try:
+                        await context.bot.edit_message_reply_markup(
+                            chat_id=chat_id,
+                            message_id=game["setup_message_id"],
+                            reply_markup=None
+                        )
+                    except Exception:
+                        pass
+
+                # 3. Agar koi purana pause message chal raha hai toh uske buttons bhee remove karein
+                if "pause_message_id" in game:
                     try:
                         await context.bot.edit_message_reply_markup(
                             chat_id=chat_id,
@@ -182,21 +193,19 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass
 
-        # ✅ FIXED: context.args ek list hoti hai (e.g. ['quiz_123']). Pehle check karenge ki list khali toh nahi hai.
+        # ✅ FIXED: context.args deep-linking logic check
         if context.args and len(context.args) > 0:
-            first_arg = context.args[0]  # Pehla string element nikala list se
+            first_arg = context.args[0]  
             
             if first_arg.startswith("quiz_"):
                 if not is_private and chat_id in GROUP_GAMES:
                     GROUP_GAMES.pop(chat_id, None)
 
-                # FIX 1 & 4: Split karke deep-linking link check kiya
                 parts = first_arg.split("_")
                 if len(parts) < 2:
                     await update.message.reply_text("❌ Invalid quiz link.")
                     return
                 
-                # Quiz ID ko integer me convert kiya (SQL mismatch se bachne ke liye)
                 try:
                     quiz_id = int(parts[1])
                 except ValueError:
@@ -205,13 +214,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
-                cursor.execute("SELECT title, description, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+                cursor.execute("SELECT title, description, timer, negative_value FROM quizzes WHERE quiz_id = ?", (quiz_id,))
                 quiz_data = cursor.fetchone()
                 
                 cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
                 total_q_data = cursor.fetchone()
-                
-                # ✅ FIXED: fetchone() tuple deta hai (e.g. (5,)), usme se 0th index lena padega number ke liye
                 total_q = total_q_data[0] if total_q_data else 0  
                 conn.close()
                 
@@ -219,23 +226,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text("❌ Quiz data not found.")
                     return
 
-                title, desc, timer = quiz_data
+                title, desc, timer, negative_value = quiz_data
                 time_disp = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
+                db_neg_val = negative_value if negative_value is not None else 0.0
                 
                 init_text = (
                     f"🎲 *Get ready for the quiz!*\n\n"
                     f"📚 *Title:* {escape_markdown(title)}\n"
                     f"🔥 *Description:* {escape_markdown(desc) if desc else 'No description'}\n"
                     f"🖊️ *Questions:* {total_q}\n"
-                    f"⏱ *Time per question:* {time_disp}\n\n"
+                    f"⏱ *Time per question:* {time_disp}\n"
+                    f"📉 *Negative Marking:* `-{db_neg_val} Marks` per wrong answer\n\n"
                     "🏁 *Click 'I am ready!' to start the quiz.*\n"
                     "🏁 *The quiz will begin when at least 2 people are ready to play. Send /stop to stop it.*"
                 )
                 
-                # callback_data me clean integer quiz_id pass kiya
-                keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
-                reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
+                # 🌟 FIX: Raw dictionary payload use kiya button ko Green colour dene ke liye
+                raw_button = {
+                    "text": "I am ready!  (0)",
+                    "callback_data": f"ready_{quiz_id}",
+                    "style": "success"  # Hara (Green) rang lagane ke liye
+                }
+                kb = [[raw_button]]
+                
+                quiz_panel_msg = await update.message.reply_text(
+                    init_text, 
+                    reply_markup=InlineKeyboardMarkup(kb), 
+                    parse_mode="Markdown"
+                )
+                
+                if not is_private:
+                    if chat_id not in GROUP_GAMES:
+                        GROUP_GAMES[chat_id] = {}
+                    GROUP_GAMES[chat_id]["setup_message_id"] = quiz_panel_msg.message_id
                 return
 
         # Welcome message text layout se pehle active quiz check
@@ -256,20 +279,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📢 *Owner Details:* ID `{OWNER_ID}`"
         )
         
-        # 🔥 CHAT TYPE BASE PAR BUTTONS KA LOGIC
+        # 🌟 FIX: Welcome panel ke buttons ko bhi custom color diya (Blue aur Green)
         if is_private:
-            keyboard = [
-                [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
-                [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
+            kb = [
+                [{"text": "🚀 Create New Quiz 🚀", "callback_data": "btn_newquiz", "style": "success"}],
+                [{"text": "📚 View My Quizzes 📚", "callback_data": "btn_viewquizzes", "style": "primary"}]
             ]
         else:
             bot_username = context.bot.username
             add_url = f"https://t.me/{bot_username}?startgroup=true"
-            keyboard = [
-                [InlineKeyboardButton("➕ Add me in your group", url=add_url)]
+            kb = [
+                [{"text": "✨ Add me in your group", "url": add_url, "style": "primary"}]
             ]
         
-        welcome_msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        welcome_msg = await update.message.reply_text(
+            welcome_text, 
+            reply_markup=InlineKeyboardMarkup(kb), 
+            parse_mode="Markdown"
+        )
         
         if not is_private:
             if chat_id not in GROUP_GAMES:
@@ -277,9 +304,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             GROUP_GAMES[chat_id]["welcome_message_id"] = welcome_msg.message_id
 
     except Exception as e:
-        logging.error(f"Error in start: {e}", exc_info=True)  # Terminal me poori crash trace dikhegi
+        logging.error(f"Error in start: {e}", exc_info=True)  
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
-        
+                    
 
 # Help command Handel
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
