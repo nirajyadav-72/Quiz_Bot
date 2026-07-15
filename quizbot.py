@@ -2031,11 +2031,11 @@ async def compile_group_leaderboard(chat_id, context):
                 else:
                     wrong += 1
             
-            # 🔥 Core Formula: Right - (Wrong * Selected Button Value)
+            # Core Formula: Right - (Wrong * Selected Button Value)
             calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
             final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
         
-        # 🔥 Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
+        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
         sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
         
         header = f"🏁 The quiz '*{escape_markdown(quiz_title)}*' has finished!\n"
@@ -2044,14 +2044,18 @@ async def compile_group_leaderboard(chat_id, context):
         total_questions_answered = len(questions)
         subheader = f"📋 {total_questions_answered} questions answered\n"
         subheader += f"👥 Total Participants: {len(final_scores)}\n"
-        subheader += f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        subheader += f"━━━━━━━━━━━━━━━━━\n\n"
         
         leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
-            # 🌟 FIX: Check dynamic join mapping for Username or Name string explicitly
             user_display_name = game["joined_users"].get(uid, "Unknown User")
             
-            clean_username = escape_markdown(user_display_name)
+            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge taaki link valid rahe
+            if str(user_display_name).startswith("@"):
+                clean_username = user_display_name  # Keep pure clickable username
+            else:
+                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
+                
             score = meta["score"]
             wrong_count = meta["wrong"]
             points = meta["points"]
@@ -2059,19 +2063,19 @@ async def compile_group_leaderboard(chat_id, context):
             
             rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
             
-            # SEPARATED LINE DESIGN (Username handling integration)
+            # Clean layout print without invalid characters or slashes
             leaderboard += f"{rank_icon} *{clean_username}*\n"
-            leaderboard += f"   ★ Final Score: `{points:.2f} Marks`\n"
-            leaderboard += f"   Right Answers: `{score}`\n"
-            leaderboard += f"   Wrong Answers: `{wrong_count}`\n"
-            leaderboard += f"   Total Time Taken: (`{total_time}`)\n"
-            leaderboard += f"   🔹 ┈┈┈┈┈┈┈┈┈┈•┈┈┈┈┈┈┈┈┈┈ 🔹\n"
+            leaderboard += f"   Final Score: `{points:.2f} Marks`\n"
+            leaderboard += f"   Right: `{score}`\n"
+            leaderboard += f"   Wrong: `{wrong_count}`\n"
+            leaderboard += f"   Total Time Taken: `{total_time}`\n"
+            leaderboard += f"   🔹 ┈┈┈┈┈┈┈•┈┈┈┈┈┈┈ 🔹\n"
         
         footer = "\n🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        kb = [[InlineKeyboardButton("start again ✨", url=share_url)]]
+        kb = [[InlineKeyboardButton("Start Again ✨", url=share_url)]]
         
         await context.bot.send_message(
             chat_id=chat_id, 
