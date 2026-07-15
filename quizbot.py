@@ -182,45 +182,61 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass
 
-        args = context.args
-        # Handle direct deep-linking tracking code (Group me quiz panel yahan se open hota hai)
-        if args and len(args) > 0 and args.startswith("quiz_"):
-            if not is_private and chat_id in GROUP_GAMES:
-                GROUP_GAMES.pop(chat_id, None)
+        # context.args humesha ek list hoti hai string nahi (e.g., ['quiz_123'])
+        if context.args and len(context.args) > 0:
+            first_arg = context.args[0]
+            
+            if first_arg.startswith("quiz_"):
+                if not is_private and chat_id in GROUP_GAMES:
+                    GROUP_GAMES.pop(chat_id, None)
 
-            quiz_id = args.split("_")
-            
-            conn = sqlite3.connect(DB_FILE)
-            cursor = conn.cursor()
-            cursor.execute("SELECT title, description, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
-            quiz_data = cursor.fetchone()
-            cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
-            total_q = cursor.fetchone()
-            conn.close()
-            
-            if not quiz_data:
-                await update.message.reply_text("❌ Quiz data not found.")
+                # FIX 1 & 4: Pehle split karke check kiya ki format sahi hai ya nahi
+                parts = first_arg.split("_")
+                if len(parts) < 2:
+                    await update.message.reply_text("❌ Invalid quiz link.")
+                    return
+                
+                # Quiz ID ko alag nikala aur integer me convert kiya (SQL mismatch se bachne ke liye)
+                try:
+                    quiz_id = int(parts[1])
+                except ValueError:
+                    await update.message.reply_text("❌ Invalid quiz ID format.")
+                    return
+                
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute("SELECT title, description, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+                quiz_data = cursor.fetchone()
+                
+                cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
+                total_q_data = cursor.fetchone()
+                total_q = total_q_data[0] if total_q_data else 0  # Safe tuple extraction
+                conn.close()
+                
+                if not quiz_data:
+                    await update.message.reply_text("❌ Quiz data not found.")
+                    return
+
+                title, desc, timer = quiz_data
+                time_disp = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
+                
+                init_text = (
+                    f"🎲 *Get ready for the quiz!*\n\n"
+                    f"📚 *Title:* {escape_markdown(title)}\n"
+                    f"🔥 *Description:* {escape_markdown(desc) if desc else 'No description'}\n"
+                    f"🖊️ *Questions:* {total_q}\n"
+                    f"⏱ *Time per question:* {time_disp}\n\n"
+                    "🏁 *Click 'I am ready!' to start the quiz.*\n"
+                    "🏁 *The quiz will begin when at least 2 people are ready to play. Send /stop to stop it.*"
+                )
+                
+                # callback_data me quiz_id pass kiya
+                keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="markdown")
                 return
 
-            title, desc, timer = quiz_data
-            time_disp = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
-            
-            init_text = (
-                f"🎲 *Get ready for the quiz!*\n\n"
-                f"📚 *Title:* {escape_markdown(title)}\n"
-                f"🔥 *Description:* {escape_markdown(desc) if desc else 'No description'}\n"
-                f"🖊️ *Questions:* {total_q}\n"
-                f"⏱ *Time per question:* {time_disp}\n\n"
-                "🏁 *Click 'I am ready!' to start the quiz.*\n"
-                "🏁 *The quiz will begin when at least 2 people are ready to play. Send /stop to stop it.*"
-            )
-            
-            keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
-            return
-
-        # Check for active quiz creation (Sirf Private Chat/DM ke liye rule check)
+        # Welcome message text layout se pehle active quiz check
         if is_private and check_active_quiz_creation(update.message.from_user.id, context):
             await update.message.reply_text(
                 "⚠️ **You have an unfinished quiz.** Please finish creating your quiz or send /cancel.\n\n"
@@ -254,7 +270,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         
         # Welcome message send karke use variable me liya
-        welcome_msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        welcome_msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="markdown")
         
         # Agar ye group hai, toh welcome message ki ID save karein taaki agli baar ye delete ho sake
         if not is_private:
@@ -265,6 +281,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in start: {e}")
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
+                 
 
 # Help command Handel
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
