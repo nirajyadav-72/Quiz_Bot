@@ -245,7 +245,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 raw_button = {
                     "text": "I am ready!  (0)",
                     "callback_data": f"ready_{quiz_id}",
-                    "style": "success"  # Hara (Green) rang lagane ke liye
+                    "style": "primary"  # Hara (Green) rang lagane ke liye
                 }
                 kb = [[raw_button]]
                 
