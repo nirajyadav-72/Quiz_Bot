@@ -2074,18 +2074,18 @@ async def compile_group_leaderboard(chat_id, context):
         footer = "\n🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
-        # 🌟 NEW FEATURE: Telegram Bot API 9.4 ke native colored button feature ka use kiya hai
+        # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
         
-        kb = [
-            [
-                InlineKeyboardButton(
-                    text="Start Again ✨", 
-                    url=share_url,
-                    style="success"  # Aap yahan "primary" (Blue) ya "danger" (Red) 
-                )
-            ]
-        ]
+        # Raw structure format dictionary injection
+        raw_button = {
+            "text": "Start Again ✨",
+            "url": share_url,
+            "style": "success"  # Hara (Green) rang lagane ke liye. Neela chahiye toh "primary" likhein
+        }
+        
+        # InlineKeyboardMarkup constructor manually object structures feed kar lega
+        kb = [[raw_button]]
         
         await context.bot.send_message(
             chat_id=chat_id, 
