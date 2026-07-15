@@ -2074,8 +2074,18 @@ async def compile_group_leaderboard(chat_id, context):
         footer = "\n🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
+        # 🌟 NEW FEATURE: Telegram Bot API 9.4 ke native colored button feature ka use kiya hai
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        kb = [[InlineKeyboardButton("Start Again ✨", url=share_url)]]
+        
+        kb = [
+            [
+                InlineKeyboardButton(
+                    text="Start Again ✨", 
+                    url=share_url,
+                    style="success"  # Aap yahan "primary" (Blue) ya "danger" (Red) 
+                )
+            ]
+        ]
         
         await context.bot.send_message(
             chat_id=chat_id, 
@@ -2086,6 +2096,7 @@ async def compile_group_leaderboard(chat_id, context):
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
+        
         
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
