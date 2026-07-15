@@ -1973,6 +1973,8 @@ async def compile_group_leaderboard(chat_id, context):
         if not game:
             return
         
+        bot_username = context.bot.username if context.bot.username else "quiz_bot"
+        
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         # Title ke sath negative_value column fetch ki
@@ -1988,7 +1990,10 @@ async def compile_group_leaderboard(chat_id, context):
         correct_answers = {}
         for idx, (q_text, options_json, correct_ans) in enumerate(questions):
             options = json.loads(options_json)
-            correct_answers[idx] = options.index(correct_ans)
+            try:
+                correct_answers[idx] = options.index(correct_ans)
+            except ValueError:
+                correct_answers[idx] = -1
         
         final_scores = {}
         for uid in game["user_answers"].keys():
@@ -2019,7 +2024,7 @@ async def compile_group_leaderboard(chat_id, context):
         # 🔥 Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
         sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
         
-        header = f"🏁 The quiz '{escape_markdown(quiz_title)}' has finished!\n"
+        header = f"🏁 The quiz '*{escape_markdown(quiz_title)}*' has finished!\n"
         header += f"📉 *Negative Marking Applied: -{db_neg_multiplier} per wrong answer*\n\n"
         
         total_questions_answered = len(questions)
@@ -2029,6 +2034,8 @@ async def compile_group_leaderboard(chat_id, context):
         leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_name = game["joined_users"].get(uid, "Unknown User")
+            # Safe markdown username escape to avoid formatting breaks
+            clean_username = escape_markdown(user_name)
             score = meta["score"]
             wrong_count = meta["wrong"]
             points = meta["points"]
@@ -2037,7 +2044,7 @@ async def compile_group_leaderboard(chat_id, context):
             rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
             
             # Display Layout according to final score & time taken
-            leaderboard += f"{rank_icon}  {user_name}\n"
+            leaderboard += f"{rank_icon}  {clean_username}\n"
             leaderboard += f"          ★ Final Score: `{points:.2f} Marks`\n"
             leaderboard += f"          Right Ans: {score}/{total_questions_answered}  |  Wrong Ans: {wrong_count}\n"
             leaderboard += f"          Total Time Taken: ({total_time})\n\n"
@@ -2045,12 +2052,21 @@ async def compile_group_leaderboard(chat_id, context):
         footer = "🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
         
-        kb = [[InlineKeyboardButton("📢 Share Score", url="https://t.me!")]]
-        await context.bot.send_message(chat_id=chat_id, text=full_message, reply_markup=InlineKeyboardMarkup(kb))
+        # 🌟 FIX: URL format ko completely valid aur meaningful share target me convert kiya
+        share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
+        kb = [[InlineKeyboardButton("📢 Challenge Others (Share Quiz)", url=share_url)]]
+        
+        # Added parse_mode to correctly render formatting styles
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=full_message, 
+            reply_markup=InlineKeyboardMarkup(kb),
+            parse_mode="Markdown"
+        )
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
-
+                  
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
