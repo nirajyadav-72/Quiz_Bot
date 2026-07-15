@@ -1557,7 +1557,24 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         message_id = query.message.message_id
         user_id = query.from_user.id
         user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
-        quiz_id = query.data.split("_")[1]
+        
+        # FIX 1 & 4: Safe string check aur parsing (Type Mismatch se bachne ke liye)
+        parts = query.data.split("_")
+        if len(parts) < 2:
+            try:
+                await query.answer("❌ Invalid data format.", show_alert=True)
+            except Exception:
+                pass
+            return
+            
+        try:
+            quiz_id = int(parts[1])
+        except ValueError:
+            try:
+                await query.answer("❌ Invalid Quiz ID format.", show_alert=True)
+            except Exception:
+                pass
+            return
         
         # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
         if chat_id in GROUP_GAMES:
@@ -1595,10 +1612,15 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         # 🚀 ANTI-ERROR MULTI-USER BYPASS:
         # Agar countdown chal raha hai, toh users ko error dene ke bajaye silently group me add karein
-        if game["quiz_started"]:
+        if game.get("quiz_started"):
+            if "joined_users" not in game: game["joined_users"] = {}
+            if "scores" not in game: game["scores"] = {}
+            if "user_answers" not in game: game["user_answers"] = {}
+            if "ready_users" not in game: game["ready_users"] = set()
+
             if user_id not in game["joined_users"]:
                 game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
-                game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+                game["scores"][user_id] = {"score": 0, "total_time": 0.0, "wrong": 0, "points": 0.0}
                 game["user_answers"][user_id] = {}
             game["ready_users"].add(user_id)
             try:
@@ -1610,20 +1632,21 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # Auto-Join structure initialization execution
         if user_id not in game["joined_users"]:
             game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
-            game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+            # FIX 2: Scoring dict me default keys complete rakhi hain
+            game["scores"][user_id] = {"score": 0, "total_time": 0.0, "wrong": 0, "points": 0.0}
             game["user_answers"][user_id] = {}
 
         game["ready_users"].add(user_id)
         ready_count = len(game["ready_users"])
-        joined_count = len(game["joined_users"])
 
         # Check if this is from external sharing link (single player mode)
-        # In single player mode (private chat), start with just 1 ready user
-        is_private_chat = query.message.chat.type == "private"
+        is_private_chat = str(query.message.chat.type) == "private" or (hasattr(query.message.chat.type, "value") and query.message.chat.type.value == "private")
         min_ready_required = 1 if is_private_chat else 2
 
-        if ready_count >= min_ready_required:
+        # FIX 7: Race Condition check - Atomic condition lagayi taaki parallel requests loop na chalayein
+        if ready_count >= min_ready_required and not game.get("quiz_started"):
             game["quiz_started"] = True
+            
             await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
             
             # Only edit button, keep panel message same
@@ -1653,6 +1676,11 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             game["current_q"] = 0
             asyncio.create_task(send_next_group_poll(chat_id, context))
         else:
+            # Agar quiz already start ho chuki hai countdown me toh unhe welcome alert dein
+            if game.get("quiz_started"):
+                await query.answer("Quiz start ho rahi hai, aap shamil ho chuke hain! ⚡")
+                return
+
             # Update only button with new count - panel message stays SAME
             keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
             
@@ -1669,6 +1697,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
         except Exception:
             pass
+                
             
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
