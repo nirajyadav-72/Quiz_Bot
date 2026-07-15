@@ -2047,18 +2047,44 @@ async def compile_group_leaderboard(chat_id, context):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
-        # 1. Quiz creation ka temporary data delete/clear karein
-        keys_to_clear = ["quiz_build", "quiz_build_creator_id"]
+        user_id = update.message.from_user.id if update.message else update.callback_query.from_user.id
+        
+        # 1. 🔄 COMPLETE FLUSH: Quiz creation ka saara temporary data complete clear karein
+        keys_to_clear = [
+            "quiz_build", "quiz_build_creator_id", "current_state", 
+            "quiz_title", "quiz_desc", "quiz_timer", "questions_list",
+            "awaiting_quiz_title", "awaiting_quiz_desc", "awaiting_quiz_timer",
+            "awaiting_question_text", "awaiting_options", "awaiting_correct_answer"
+        ]
         for key in keys_to_clear:
             if key in context.user_data:
                 del context.user_data[key]
+                
+        # Aapke check_active_quiz_creation data ko flush karne ke liye context.bot_data ya user_data reset
+        if "active_creations" in context.bot_data and user_id in context.bot_data["active_creations"]:
+            del context.bot_data["active_creations"][user_id]
+            
+        # Pure context.user_data dictionary ko verify karein agar state flag bacha ho
+        context.user_data.pop("quiz_creation_active", None)
 
         # 2. Setup Cancel ka message bhej kar purana reply keyboard hatayein
         msg_obj = update.callback_query.message if update.callback_query else update.message
-        await msg_obj.reply_text("❌ Setup cancelled.", reply_markup=ReplyKeyboardRemove())
+        
+        # Safe message call handle
+        if update.callback_query:
+            try:
+                await update.callback_query.answer("❌ Setup cancelled.")
+            except Exception:
+                pass
+
+        await msg_obj.reply_text(
+            "❌ *Quiz creation has been cancelled and all temporary data has been cleared.*", 
+            reply_markup=ReplyKeyboardRemove(),
+            parse_mode="markdown"
+        )
         
         # 3. 🔥 DIRECT START PANEL RETURN LOGIC
-        # Yeh aapke original 'start' function ko call karega, jisse wahi message aur buttons aayenge
+        # Kuch updates directly main menu display karna prefer karti hain, hum safely start panel return karenge
         await start(update, context)
             
         # 4. Conversation workflow end karein
@@ -2082,7 +2108,7 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 *Check Available Commands:*\n"
             "➤ /help *– Open help center*\n\n"
             "👥 *Add the bot to a group and start quizzes*\n"
-            "📢 *For support, contact owner.*"
+            f"📢 *Owner Details:* ID `{OWNER_ID}`" # Dynamic link format maintained text layout
         )
         keyboard = [
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
@@ -2093,7 +2119,7 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             welcome_text, 
             reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="Markdown",
+            parse_mode="markdown",
             read_timeout=20,
             write_timeout=20
         )
@@ -2101,9 +2127,10 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Error in handle_back_main: {e}")
         try:
-            await query.answer("❌ Error", show_alert=True)
+            await query.answer("❌ Error returning to main menu", show_alert=True)
         except Exception:
             pass
+            
 
 async def inline_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles inline queries to show clean quiz list or share a specific quiz"""
