@@ -1772,21 +1772,36 @@ async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
 async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz stop from pause menu"""
+    query = update.callback_query
     try:
-        query = update.callback_query
         await query.answer()
         
         # Parse: stopquiz_chat_id
         parts = query.data.split("_")
-        chat_id = int(parts[1]) # Error fixed here
+        chat_id = int(parts[1])
         
         if chat_id not in GROUP_GAMES:
             await query.answer("❌ Quiz not found", show_alert=True)
             return
             
+        game = GROUP_GAMES[chat_id]
+        
+        # ⚡ फिक्स 1: बैकग्राउंड टाइमर/टास्क को तुरंत मारें (Cancel करें) ताकि अगला सवाल न आए
+        if "current_task" in game and not game["current_task"].done():
+            game["current_task"].cancel()
+            logging.info(f"Quiz background task cancelled from pause menu for chat {chat_id}")
+            
+        # ⚡ फिक्स 2: अगर ग्रुप में कोई पोल खुला रह गया है, तो उसे तुरंत क्लोज करें
+        current_q_idx = game.get("current_q", 0)
+        poll_ids_dict = game.get("poll_message_ids", {})
+        if current_q_idx in poll_ids_dict:
+            try:
+                await context.bot.stop_poll(chat_id=chat_id, message_id=poll_ids_dict[current_q_idx])
+            except Exception:
+                pass # अगर पोल पहले से बंद हो तो एरर न आए
+        
         # Tracking clear karein
-        if chat_id in GROUP_GAMES:
-            GROUP_GAMES[chat_id].pop("pause_message_id", None)
+        game.pop("pause_message_id", None)
         
         await query.edit_message_text(
             text="❌ Quiz stopped!\n\n🏁 Final Result:",
@@ -1794,15 +1809,18 @@ async def handle_stop_quiz_from_pause(update: Update, context: ContextTypes.DEFA
         )
         
         await compile_group_leaderboard(chat_id, context)
+        
+        # ⚡ फिक्स 3: रिजल्ट दिखाने के बाद डेटा को मेमोरी से पूरी तरह डिलीट करें
+        GROUP_GAMES.pop(chat_id, None)
+        
     except Exception as e:
-        logging.error(f"Error in handle_stop_quiz_from_pause: {e}")
+        logging.error(f"Error in handle_stop_quiz_from_pause: {e}", exc_info=True)
         await query.answer("❌ Error", show_alert=True)
         
 async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Stop the running quiz in group"""
     try:
-        chat_id = update.message.chat_id
-        user_id = update.message.from_user.id
+        chat_id = update.effective_chat.id
         
         # Check if quiz is running in this chat
         if chat_id not in GROUP_GAMES:
@@ -1815,13 +1833,32 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not game.get("quiz_started"):
             await update.message.reply_text("❌ Quiz abhi start hi nahi huya hai!")
             return
+            
+        # ⚡ फिक्स 1: बैकग्राउंड टाइमर/टास्क को तुरंत मारें (Cancel करें) ताकि अगला सवाल लोड न हो
+        if "current_task" in game and not game["current_task"].done():
+            game["current_task"].cancel()
+            logging.info(f"Quiz background task cancelled via /stop for chat {chat_id}")
+            
+        # ⚡ फिक्स 2: ग्रुप में खुले हुए चालू पोल (Active Poll) को तुरंत बंद करें
+        current_q_idx = game.get("current_q", 0)
+        poll_ids_dict = game.get("poll_message_ids", {})
+        if current_q_idx in poll_ids_dict:
+            try:
+                await context.bot.stop_poll(chat_id=chat_id, message_id=poll_ids_dict[current_q_idx])
+            except Exception:
+                pass # अगर पोल पहले से बंद हो तो क्रैश न हो
         
         # Stop the quiz and show leaderboard
         await update.message.reply_text("Quiz stop ho gaya! Final Result dikha raha hoon...")
         await compile_group_leaderboard(chat_id, context)
+        
+        # ⚡ फिक्स 3: लीडरबोर्ड दिखाने के बाद तुरंत डेटा हटा दें ताकि मेमोरी पूरी साफ हो जाए
+        GROUP_GAMES.pop(chat_id, None)
+        
     except Exception as e:
-        logging.error(f"Error in stop_quiz: {e}")
+        logging.error(f"Error in stop_quiz: {e}", exc_info=True)
         await update.message.reply_text("❌ Error stopping quiz")
+        
 
 async def send_next_group_poll(chat_id, context):
     try:
@@ -1858,8 +1895,10 @@ async def send_next_group_poll(chat_id, context):
             logging.error(f"Quiz data not found for quiz_id: {qid}")
             return
         
+        # ⚡ फिक्स 1: सारे सवाल खत्म होने पर डेटा तुरंत क्लियर करें ताकि लीडरबोर्ड के बाद नया टास्क न बने
         if game["current_q"] >= len(questions):
             await compile_group_leaderboard(chat_id, context)
+            GROUP_GAMES.pop(chat_id, None)
             return
 
         # [0] to extract correct integer from database tuple
@@ -1877,17 +1916,17 @@ async def send_next_group_poll(chat_id, context):
             await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
             await asyncio.sleep(1)
 
-        # 🌟 STATE CHECKS BEFORE SENDING: Sleep ke baad double-check kiya ki kahin pause toh nahi hua
+        # 🌟 STATE CHECKS BEFORE SENDING
         if chat_id not in GROUP_GAMES or GROUP_GAMES[chat_id].get("quiz_paused"):
             return
 
         game["question_start_times"][game["current_q"]] = datetime.now()
         game["start_time"] = datetime.now()
         
-        # FIX 8: explanation agar khali string ("") ya spaces ka string hua toh Telegram error dega.
+        # FIX 8: explanation handling
         clean_explanation = explanation.strip() if explanation and str(explanation).strip() else None
         
-        # 🚀 FINAL FIXED POLL: Live countdown bar integrated perfectly
+        # 🚀 FINAL FIXED POLL
         poll_msg = await context.bot.send_poll(
             chat_id=chat_id, 
             question=f"[{game['current_q'] + 1}/{len(questions)}] {q_text}",
@@ -1909,62 +1948,72 @@ async def send_next_group_poll(chat_id, context):
             "question_index": game["current_q"]
         }
         
-        # Wait for timer, then close the poll and move to next question
-        await asyncio.sleep(timer)
+        # ⚡ फिक्स 2: सीधे sleep करने के बजाय इस रनिंग टास्क को ट्रैक करें ताकि बीच में Cancel किया जा सके
+        try:
+            game["current_task"] = asyncio.current_task()
+            await asyncio.sleep(timer)
+        except asyncio.CancelledError:
+            # अगर /stop कमांड दबाया जाएगा, तो कोड यहीं रुक जाएगा और अगला सवाल कभी नहीं भेजेगा
+            logging.info(f"Quiz sleep task cancelled for chat {chat_id}")
+            return
         
-        # Check if quiz is still active before closing poll
-        if chat_id in GROUP_GAMES:
-            game = GROUP_GAMES[chat_id]
+        # Check if quiz is still active after sleep
+        if chat_id not in GROUP_GAMES:
+            return
             
-            # 🌟 INTERRUPT CHECK: Agar user ne countdown ke beech me pause/stop kar diya toh loop se exit karein
-            if game.get("quiz_paused"):
-                return
+        game = GROUP_GAMES[chat_id]
+        
+        if game.get("quiz_paused"):
+            return
 
-            # Check if any user answered this question
-            answers_received = False
-            if "user_answers" in game:
-                for uid, user_answers in game["user_answers"].items():
-                    if game["current_q"] in user_answers:
-                        answers_received = True
-                        break
+        # Check if any user answered this question
+        answers_received = False
+        if "user_answers" in game:
+            for uid, user_answers in game["user_answers"].items():
+                if game["current_q"] in user_answers:
+                    answers_received = True
+                    break
+        
+        try:
+            if not poll_msg.poll.is_closed:
+                await context.bot.stop_poll(chat_id=chat_id, message_id=game["poll_message_ids"][game["current_q"]])
+        except Exception:
+            pass  
+        
+        if not answers_received:
+            game["consecutive_no_answers"] += 1
+            logging.info(f"No answers for Q{game['current_q'] + 1}. Count: {game['consecutive_no_answers']}")
             
-            # 🔴 CLOSE POLL EXPLICITLY: Telegram native timers automatic close karte hain, par logs crash errors clean handle karne ke liye warnings bypass logic rakha
-            try:
-                # Sirf tabhi stop call karein agar poll already closed state me auto-shift nahi hua hai (Bypasses 400 Bad Request Warning)
-                if not poll_msg.poll.is_closed:
-                    await context.bot.stop_poll(chat_id=chat_id, message_id=game["poll_message_ids"][game["current_q"]])
-            except Exception as e:
-                pass  # Safely suppressed the native automatic timer collision warning
-            
-            if not answers_received:
-                game["consecutive_no_answers"] += 1
-                logging.info(f"No answers for Q{game['current_q'] + 1}. Count: {game['consecutive_no_answers']}")
+            # 🔴 AUTO-PAUSE after 2 consecutive questions with no answers
+            if game["consecutive_no_answers"] >= 2:
+                game["quiz_paused"] = True
                 
-                # 🔴 AUTO-PAUSE after 2 consecutive questions with no answers
-                if game["consecutive_no_answers"] >= 2:
-                    game["quiz_paused"] = True
-                    
-                    pause_msg = f"🔐 The quiz '*{escape_markdown(quiz_title)}*' was paused because nobody was answering"
-                    
-                    keyboard = [
-                        [InlineKeyboardButton("Resume Quiz", callback_data=f"pausequiz_{chat_id}")],
-                        [InlineKeyboardButton("Stop Quiz", callback_data=f"stopquiz_{chat_id}")]
-                    ]
-                    
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=pause_msg,
-                        reply_markup=InlineKeyboardMarkup(keyboard),
-                        parse_mode="Markdown"
-                    )
-                    return
-            else:
-                game["consecutive_no_answers"] = 0
-            
-            game["current_q"] += 1
+                pause_msg = f"🔐 The quiz '*{escape_markdown(quiz_title)}*' was paused because nobody was answering"
+                
+                keyboard = [
+                    [InlineKeyboardButton("Resume Quiz", callback_data=f"pausequiz_{chat_id}")],
+                    [InlineKeyboardButton("Stop Quiz", callback_data=f"stopquiz_{chat_id}")]
+                ]
+                
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=pause_msg,
+                    reply_markup=InlineKeyboardMarkup(keyboard),
+                    parse_mode="Markdown"
+                )
+                return
+        else:
+            game["consecutive_no_answers"] = 0
+        
+        game["current_q"] += 1
+        
+        # ⚡ फिक्स 3: अगला टास्क शुरू करने से पहले दोबारा पक्का करें कि गेम अभी भी एक्टिव है
+        if chat_id in GROUP_GAMES and not game.get("quiz_paused"):
             asyncio.create_task(send_next_group_poll(chat_id, context))
+            
     except Exception as e:
-        logging.error(f"Error in send_next_group_poll: {e}")
+        logging.error(f"Error in send_next_group_poll: {e}", exc_info=True)
+        
         
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
