@@ -2058,9 +2058,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
             if key in context.user_data:
                 del context.user_data[key]
                 
-        # Aapke check_active_quiz_creation data ko flush karne ke liye context.bot_data ya user_data reset
-        if "active_creations" in context.bot_data and user_id in context.bot_data["active_creations"]:
-            del context.bot_data["active_creations"][user_id]
+        # 🌟 FIX: context.bot_data se key ko safely pull kiya aur user_id check karke clean kiya
+        if context.bot_data and "active_creations" in context.bot_data:
+            if isinstance(context.bot_data["active_creations"], dict) and user_id in context.bot_data["active_creations"]:
+                context.bot_data["active_creations"].pop(user_id, None)
             
         # Pure context.user_data dictionary ko verify karein agar state flag bacha ho
         context.user_data.pop("quiz_creation_active", None)
