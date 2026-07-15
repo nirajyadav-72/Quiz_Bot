@@ -2420,6 +2420,9 @@ async def main():
         return
     
     try:
+        # 🌟 FIX: Database ko yahan initialize kiya taaki tables automatically ban jayein
+        init_db()  
+        
         # 🔥 GLOBAL TIMEOUT FIX: Saare parameters ko request_config ke andar hi handle kiya hai
         request_config = HTTPXRequest(
             connect_timeout=35.0,  # Max connection hold time
@@ -2536,7 +2539,7 @@ async def main():
 
     except Exception as e:
         logging.error(f"Critical error in main loop: {e}")
-    
+        
         
 # 🛑 EXECUTION LOOPS CLOSURE:
 if __name__ == '__main__':
