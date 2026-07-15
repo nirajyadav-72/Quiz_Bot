@@ -1857,22 +1857,32 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
         user_name = ans.user.first_name or "Player"
         
         for cid, game in list(GROUP_GAMES.items()):
-            if pid in game["poll_map"]:
+            if "poll_map" in game and pid in game["poll_map"]:
                 poll_info = game["poll_map"][pid]
                 correct_idx = poll_info["correct_idx"]
                 question_idx = poll_info["question_index"]
                 
+                # FIX 2: Sabse pehle ensure karein ki 'scores' aur 'user_answers' keys game me exist karti hain
+                if "scores" not in game:
+                    game["scores"] = {}
+                if "user_answers" not in game:
+                    game["user_answers"] = {}
+                if "joined_users" not in game:
+                    game["joined_users"] = {}
+                
                 if uid not in game["joined_users"]:
                     game["joined_users"][uid] = user_name
-                    # 🔥 Safe initialization for scoring
-                    game["scores"][uid] = {"score": 0, "total_time": 0.0, "wrong": 0, "points": 0.0}
-                    game["user_answers"][uid] = {}
                     logging.info(f"New participant added: {user_name} (ID: {uid})")
+                
+                # Agar user pehle se joined nahi tha ya uski entry scores me miss ho gayi thi
+                if uid not in game["scores"]:
+                    game["scores"][uid] = {"score": 0, "total_time": 0.0, "wrong": 0, "points": 0.0}
                 
                 if uid not in game["user_answers"]:
                     game["user_answers"][uid] = {}
                 
-                selected_idx = ans.option_ids if ans.option_ids else -1
+                # FIX 5: ans.option_ids ek list hoti hai, isliye pehla element nikalenge
+                selected_idx = ans.option_ids[0] if ans.option_ids else -1
                 
                 game["user_answers"][uid][question_idx] = {
                     "selected": selected_idx,  
@@ -1881,7 +1891,7 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 }
     except Exception as e:
         logging.error(f"Error in track_poll_answers: {e}")
-
+        
 async def compile_group_leaderboard(chat_id, context):
     try:
         game = GROUP_GAMES.get(chat_id)
