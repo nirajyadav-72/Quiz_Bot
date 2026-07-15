@@ -264,7 +264,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         else:
             bot_username = context.bot.username
-            add_url = f"https://t.me{bot_username}?startgroup=true"
+            add_url = f"https://t.me/{bot_username}?startgroup=true"
             keyboard = [
                 [InlineKeyboardButton("➕ Add me in your group", url=add_url)]
             ]
