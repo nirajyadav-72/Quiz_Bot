@@ -2106,24 +2106,26 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 *Check Available Commands:*\n"
             "➤ /help *– Open help center*\n\n"
             "👥 *Add the bot to a group and start quizzes*\n"
-            f"📢 *Owner Details:* ID `{OWNER_ID}`" # Dynamic link format maintained text layout
+            f"📢 *Owner Details:* ID `{OWNER_ID}`"
         )
         keyboard = [
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
         
-        # ✅ FIXED: UI update me explicit local timeout apply kiya hai
+        # ✅ FIXED: parse_mode ko "Markdown" (M capital) kiya aur timeouts ko api_kwargs me daala
         await query.edit_message_text(
-            welcome_text, 
+            text=welcome_text, 
             reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode="markdown",
-            read_timeout=20,
-            write_timeout=20
+            parse_mode="Markdown",
+            api_kwargs={
+                "read_timeout": 20,
+                "write_timeout": 20
+            }
         )
         
     except Exception as e:
-        logging.error(f"Error in handle_back_main: {e}")
+        logging.error(f"Error in handle_back_main: {e}", exc_info=True)
         try:
             await query.answer("❌ Error returning to main menu", show_alert=True)
         except Exception:
