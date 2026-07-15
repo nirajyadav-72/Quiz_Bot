@@ -15,6 +15,7 @@ from telegram.ext import (
     filters, ContextTypes, ConversationHandler, CallbackQueryHandler, PollAnswerHandler,
     InlineQueryHandler  
 )
+from telegram.error import NetworkError
 from telegram.request import HTTPXRequest
 
 # Enable Logging
@@ -1912,9 +1913,13 @@ async def send_next_group_poll(chat_id, context):
         options = json.loads(options_json)
         correct_idx = options.index(correct_ans)
         
+        # 📢 Context (pre_msg) भेजने के दौरान नेटवर्क एरर सुरक्षा
         if pre_msg:
-            await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
-            await asyncio.sleep(1)
+            try:
+                await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
+                await asyncio.sleep(1)
+            except NetworkError as ne:
+                logging.warning(f"Context message failed due to network: {ne}. Continuing to poll.")
 
         # 🌟 STATE CHECKS BEFORE SENDING
         if chat_id not in GROUP_GAMES or GROUP_GAMES[chat_id].get("quiz_paused"):
@@ -1926,17 +1931,44 @@ async def send_next_group_poll(chat_id, context):
         # FIX 8: explanation handling
         clean_explanation = explanation.strip() if explanation and str(explanation).strip() else None
         
-        # 🚀 FINAL FIXED POLL
-        poll_msg = await context.bot.send_poll(
-            chat_id=chat_id, 
-            question=f"[{game['current_q'] + 1}/{len(questions)}] {q_text}",
-            options=options, 
-            type="quiz", 
-            correct_option_id=correct_idx,
-            explanation=clean_explanation, 
-            is_anonymous=False,
-            open_period=timer
-        )
+        # ====================================================================
+        # 🔥 FIX: RETRY LOOP FOR POLL SENDING (TIMED OUT ERROR PREVENTION)
+        # ====================================================================
+        poll_msg = None
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # 🚀 FINAL FIXED POLL WITH RETRY PROTECTION
+                poll_msg = await context.bot.send_poll(
+                    chat_id=chat_id, 
+                    question=f"[{game['current_q'] + 1}/{len(questions)}] {q_text}",
+                    options=options, 
+                    type="quiz", 
+                    correct_option_id=correct_idx,
+                    explanation=clean_explanation, 
+                    is_anonymous=False,
+                    open_period=timer
+                )
+                break  # अगर पोल सफलतापूर्वक चला गया, तो लूप से बाहर निकलें
+            except NetworkError as ne:
+                logging.error(f"Attempt {attempt + 1} failed sending poll to {chat_id}: {ne}")
+                if attempt < max_retries - 1:
+                    logging.info("Network error encountered. Retrying poll in 4 seconds...")
+                    await asyncio.sleep(4)  # दोबारा कोशिश करने से पहले थोड़ा रुकें
+                else:
+                    logging.error("All retries failed for sending poll. Pausing quiz to protect runtime.")
+                    game["quiz_paused"] = True
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text="⚠️ *Network problem encountered!* The quiz has been automatically paused. Use /resume to try again.",
+                        parse_mode="Markdown"
+                    )
+                    return
+        
+        # Safety fallback if poll was somehow not created
+        if not poll_msg:
+            return
+        # ====================================================================
         
         # Store poll message ID for later closing
         game["poll_message_ids"][game["current_q"]] = poll_msg.message_id
@@ -2013,7 +2045,7 @@ async def send_next_group_poll(chat_id, context):
             
     except Exception as e:
         logging.error(f"Error in send_next_group_poll: {e}", exc_info=True)
-        
+                    
         
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
