@@ -2065,14 +2065,12 @@ async def compile_group_leaderboard(chat_id, context):
             
             # 💎 BOX GRID GENERATOR SYSTEM
             leaderboard += f"{rank_icon}  *{clean_username}*\n"
-            leaderboard += "```text\n"
-            leaderboard += "┌──────────────────────────────┐\n"
+            leaderboard += "┌───────────────────────────┐\n"
             leaderboard += f"│  Final Score      : {val_score:<8} │\n"
             leaderboard += f"│  Right Answers    : {val_right:<8} │\n"
             leaderboard += f"│  Wrong Answers    : {val_wrong:<8} │\n"
             leaderboard += f"│  Total Time Taken : {val_time:<8} │\n"
-            leaderboard += "└──────────────────────────────┘\n"
-            leaderboard += "```\n"
+            leaderboard += "└───────────────────────────┘\n"
         
         footer = "🏆 Congratulations to all participants!"
         full_message = header + subheader + leaderboard + footer
