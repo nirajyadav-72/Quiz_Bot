@@ -1012,13 +1012,14 @@ async def handle_quiz_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
         title, description, timer = quiz_data
         time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
         
+        # 🌟 FIX: Markdown double asterisks (**) ko title string ke dono taraf sahi lagaya hai
         status_text = (
-            f"📊 Quiz Status\n\n"
-            f"Title:** {escape_markdown(title)}\n"
-            f"Description: {escape_markdown(description) if description else 'No description'}\n"
-            f"Total Questions: {total_q[0]}\n"
-            f"Time per Q: {time_display}\n"
-            f"✅ Status: Active"
+            f"📊 **Quiz Status**\n\n"
+            f"**Title:** {escape_markdown(title)}\n"
+            f"**Description:** {escape_markdown(description) if description else 'No description'}\n"
+            f"**Total Questions:** {total_q[0]}\n"
+            f"**Time per Q:** {time_display}\n"
+            f"✅ **Status:** Active"
         )
         
         await query.edit_message_text(
@@ -1031,7 +1032,7 @@ async def handle_quiz_status(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except Exception as e:
         logging.error(f"Error in handle_quiz_status: {e}")
         await query.answer("❌ Error", show_alert=True)
-
+        
 async def edit_quiz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         query = update.callback_query
