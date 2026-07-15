@@ -1575,10 +1575,15 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
             return
         
-        # 🔥 AUTO-RESET LOGIC: Agar purani quiz paused thi ya naya panel shuru hua hai toh purana data delete
+        # 🌟 FIX (Bug #6): Quiz IDs ko string ke bajaye integers me comparison kiya taaki purana data properly clean ho
         if chat_id in GROUP_GAMES:
             old_game = GROUP_GAMES[chat_id]
-            if old_game.get("quiz_paused") or str(old_game.get("quiz_id")) != str(quiz_id):
+            try:
+                old_quiz_id = int(old_game.get("quiz_id", 0))
+            except ValueError:
+                old_quiz_id = 0
+
+            if old_game.get("quiz_paused") or old_quiz_id != quiz_id:
                 if not old_game.get("quiz_started") or old_game.get("setup_message_id") != message_id:
                     del GROUP_GAMES[chat_id]
 
@@ -1642,7 +1647,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         is_private_chat = str(query.message.chat.type) == "private" or (hasattr(query.message.chat.type, "value") and query.message.chat.type.value == "private")
         min_ready_required = 1 if is_private_chat else 2
 
-        # FIX 7: Race Condition check - Atomic condition lagayi taaki parallel requests loop na chalayein
+        # 🌟 FIX (Bug #5 Race Condition): State trigger ke badalte hi execution duplicate prevent check lagaya
         if ready_count >= min_ready_required and not game.get("quiz_started"):
             game["quiz_started"] = True
             
@@ -1673,7 +1678,10 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 logging.warning(f"Could not delete banner message: {e}")
             
             game["current_q"] = 0
-            asyncio.create_task(send_next_group_poll(chat_id, context))
+            
+            # 🌟 DOUBLE CHECK STATE AFTER SLEEP LOOP: Kisi aur concurrent query ne start toh nahi kiya?
+            if game.get("current_q") == 0:
+                asyncio.create_task(send_next_group_poll(chat_id, context))
         else:
             # Agar quiz already start ho chuki hai countdown me toh unhe welcome alert dein
             if game.get("quiz_started"):
@@ -1697,7 +1705,6 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
         except Exception:
             pass
                 
-            
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
     try:
