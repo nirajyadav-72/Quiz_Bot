@@ -182,21 +182,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     except Exception:
                         pass
 
-        # context.args humesha ek list hoti hai string nahi (e.g., ['quiz_123'])
+        # ✅ FIXED: context.args ek list hoti hai (e.g. ['quiz_123']). Pehle check karenge ki list khali toh nahi hai.
         if context.args and len(context.args) > 0:
-            first_arg = context.args[0]
+            first_arg = context.args[0]  # Pehla string element nikala list se
             
             if first_arg.startswith("quiz_"):
                 if not is_private and chat_id in GROUP_GAMES:
                     GROUP_GAMES.pop(chat_id, None)
 
-                # FIX 1 & 4: Pehle split karke check kiya ki format sahi hai ya nahi
+                # FIX 1 & 4: Split karke deep-linking link check kiya
                 parts = first_arg.split("_")
                 if len(parts) < 2:
                     await update.message.reply_text("❌ Invalid quiz link.")
                     return
                 
-                # Quiz ID ko alag nikala aur integer me convert kiya (SQL mismatch se bachne ke liye)
+                # Quiz ID ko integer me convert kiya (SQL mismatch se bachne ke liye)
                 try:
                     quiz_id = int(parts[1])
                 except ValueError:
@@ -210,7 +210,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
                 total_q_data = cursor.fetchone()
-                total_q = total_q_data[0] if total_q_data else 0  # Safe tuple extraction
+                
+                # ✅ FIXED: fetchone() tuple deta hai (e.g. (5,)), usme se 0th index lena padega number ke liye
+                total_q = total_q_data[0] if total_q_data else 0  
                 conn.close()
                 
                 if not quiz_data:
@@ -230,10 +232,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "🏁 *The quiz will begin when at least 2 people are ready to play. Send /stop to stop it.*"
                 )
                 
-                # callback_data me quiz_id pass kiya
+                # callback_data me clean integer quiz_id pass kiya
                 keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="markdown")
+                await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
                 return
 
         # Welcome message text layout se pehle active quiz check
@@ -256,32 +258,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # 🔥 CHAT TYPE BASE PAR BUTTONS KA LOGIC
         if is_private:
-            # Private chat ke liye normal layout buttons
             keyboard = [
                 [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
                 [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
             ]
         else:
-            # Group ke liye sirf "Add me to your group" ka button (Bot username dynamic link ke sath)
             bot_username = context.bot.username
-            add_url = f"https://t.me/{bot_username}?startgroup=true"
+            add_url = f"https://t.me{bot_username}?startgroup=true"
             keyboard = [
                 [InlineKeyboardButton("➕ Add me in your group", url=add_url)]
             ]
         
-        # Welcome message send karke use variable me liya
-        welcome_msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="markdown")
+        welcome_msg = await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         
-        # Agar ye group hai, toh welcome message ki ID save karein taaki agli baar ye delete ho sake
         if not is_private:
             if chat_id not in GROUP_GAMES:
                 GROUP_GAMES[chat_id] = {}
             GROUP_GAMES[chat_id]["welcome_message_id"] = welcome_msg.message_id
 
     except Exception as e:
-        logging.error(f"Error in start: {e}")
+        logging.error(f"Error in start: {e}", exc_info=True)  # Terminal me poori crash trace dikhegi
         await update.message.reply_text("❌ An error occurred. Please try again with /start")
-                 
+        
 
 # Help command Handel
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
