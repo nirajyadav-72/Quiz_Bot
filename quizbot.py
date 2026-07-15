@@ -1715,8 +1715,13 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await query.answer("Quiz start ho rahi hai, aap shamil ho chuke hain! ⚡")
                 return
 
-            # Update only button with new count - panel message stays SAME
-            keyboard = [[InlineKeyboardButton(f"I am ready!  ({ready_count})", callback_data=f"ready_{quiz_id}")]]
+            # 🌟 FIX: Library wrapper ko bypass karne ke liye raw dict format use kiya jo green colour update ko block karega
+            raw_live_ready_btn = {
+                "text": f"I am ready!  ({ready_count})",
+                "callback_data": f"ready_{quiz_id}",
+                "style": "success"  # Locks Green color on dynamic dynamic state mutations
+            }
+            keyboard = [[raw_live_ready_btn]]
             
             # EDIT ONLY THE BUTTON, NOT THE WHOLE MESSAGE
             try:
@@ -1731,6 +1736,7 @@ async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await query.answer("Aap successfully jud chuke hain! 👍", show_alert=False)
         except Exception:
             pass
+            
                 
 async def handle_pause_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle quiz pause resume"""
