@@ -2229,8 +2229,8 @@ async def compile_group_leaderboard(chat_id, context):
             percentile = ((total_participants - idx) / total_participants * 100) if total_participants > 1 else 100.0
             penalty_val = float(wrong_count) * float(db_neg_multiplier)
             
-            # 🔥 स्मार्ट रोस्ट सिलेक्शन लॉजिक
-            if idx == 1 and percentage >= 40:
+            # 🔥 स्मार्ट रोस्ट सिलेक्शन लॉजिक (अब रैंक 1 को हमेशा सम्मान मिलेगा)
+            if idx == 1:
                 roast_msg = random.choice(roasts_topper)
             elif points < 0:
                 roast_msg = random.choice(roasts_minus)
@@ -2238,7 +2238,7 @@ async def compile_group_leaderboard(chat_id, context):
                 roast_msg = random.choice(roasts_low)
             else:
                 roast_msg = random.choice(roasts_middle)
-
+                
             # स्ट्रिंग फॉर्मेटिंग
             p_str = f"{rank_icon} {idx}. *{clean_username}* • `{badge}`\n"
             p_str += f"📊 *स्कोर:* `{points:.2f} / {float(total_questions)}` ({percentage:.1f}%)\n"
