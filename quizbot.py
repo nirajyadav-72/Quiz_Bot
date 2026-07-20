@@ -2107,6 +2107,7 @@ async def compile_group_leaderboard(chat_id, context):
         
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
+        # Title ke sath negative_value column fetch ki
         cursor.execute("SELECT title, negative_value FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
         quiz_data = cursor.fetchone()
         quiz_title = quiz_data[0] if quiz_data else "Quiz"
@@ -2116,7 +2117,7 @@ async def compile_group_leaderboard(chat_id, context):
         questions = cursor.fetchall()
         conn.close()
         
-        total_questions = len(questions)
+        total_questions_answered = len(questions)
         correct_answers = {}
         for idx, (q_text, options_json, correct_ans) in enumerate(questions):
             options = json.loads(options_json)
@@ -2127,20 +2128,12 @@ async def compile_group_leaderboard(chat_id, context):
         
         final_scores = {}
         for uid in game["user_answers"].keys():
-            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0, "points": 0.0, "attempted": 0}
-
-        cheetah_user = {"name": "कोई नहीं", "time": float('inf')}
-        kachua_user = {"name": "कोई नहीं", "time": 0.0}
-        tukka_user = {"name": "कोई नहीं", "wrong": 0}
-        viewer_user = {"name": "कोई नहीं", "skips": 0}
+            final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0, "points": 0.0}
 
         for uid, user_answers in game["user_answers"].items():
             score = 0
             wrong = 0
             total_time = 0.0
-            attempted = len(user_answers)
-            user_display_name = game["joined_users"].get(uid, "Unknown User")
-            clean_name = user_display_name if str(user_display_name).startswith("@") else escape_markdown(user_display_name)
             
             for question_idx, answer_data in user_answers.items():
                 selected_idx = answer_data["selected"]  
@@ -2155,36 +2148,20 @@ async def compile_group_leaderboard(chat_id, context):
                 else:
                     wrong += 1
             
+            # Core Formula: Right - (Wrong * Selected Button Value)
             calculated_points = float(score) - (float(wrong) * float(db_neg_multiplier))
-            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points, "attempted": attempted}
-            
-            if attempted > 0:
-                avg_t = total_time / attempted
-                if avg_t < cheetah_user["time"] and score > 0:
-                    cheetah_user = {"name": clean_name, "time": avg_t}
-                if avg_t > kachua_user["time"]:
-                    kachua_user = {"name": clean_name, "time": avg_t}
-            
-            if wrong > tukka_user["wrong"]:
-                tukka_user = {"name": clean_name, "wrong": wrong}
-                
-            skips = total_questions - attempted
-            if skips > viewer_user["skips"]:
-                viewer_user = {"name": clean_name, "skips": skips}
-
-        # टॉप 20 प्लेयर्स को फेच करने के लिए लिस्ट सॉर्टिंग
-        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:20]
-        total_participants = len(final_scores)
-
-        p1_header = f"📄 *(Page 1/2)*\n\n🏆 *{escape_markdown(quiz_title)} रिज़ल्ट* 🏆\n"
-        p1_header += f"━━━━━━━━━━━━━━━━━━━━\n"
-        p1_header += f"📚 कुल प्रश्न: `{total_questions}` | 👥 कुल खिलाड़ी: `{total_participants}`\n"
-        p1_header += f"⚙️ सिस्टम: `+1.0 | -{db_neg_multiplier}`\n"
-        p1_header += f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time, "points": calculated_points}
         
-        p1_leaderboard = ""
-        p2_leaderboard = ""
-
+        # Dynamic Sorting: Pehle high score (Descending), fir kam time (Ascending)
+        sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["points"], item[1]["total_time"]))[:50]
+        
+        header = f"🏁 The quiz '*{escape_markdown(quiz_title)}*' has finished!\n"
+        header += f"📉 *Negative Marking Applied: -{db_neg_multiplier} per wrong answer*\n\n"
+        
+        subheader = f"📋 {total_questions_answered} questions answered\n"
+        subheader += f"👥 Total Participants: {len(final_scores)}\n"
+        subheader += f"━━━━━━━━━━━━━━━━━\n\n"
+        
         # 🎭 डायलॉग्स पूल (बिना किसी फिक्स नाम के - रैंडमली इस्तेमाल के लिए)
         roasts_topper = [
             "[टॉपर भाई] भाई तुमने तो सीधे किताब ही रट मारी थी क्या? टॉपर बनने का इरादा पहले से ही था या गलती से इतिहास रच दिया?",
@@ -2210,26 +2187,25 @@ async def compile_group_leaderboard(chat_id, context):
             "[माइनस मास्टर] भाई साहब! माइनस मार्किंग आपके लिए ही बनी थी। अगली बार थोड़ा संभल कर, वरना बोट भी रो पड़ेगा।"
         ]
 
+        leaderboard = ""
         for idx, (uid, meta) in enumerate(sorted_scores, 1):
             user_display_name = game["joined_users"].get(uid, "Unknown User")
-            clean_username = user_display_name if str(user_display_name).startswith("@") else escape_markdown(user_display_name)
+            
+            # 🌟 FIX: Agar name @ se shuru hota hai (username hai), toh escape nahi karenge taaki link valid rahe
+            if str(user_display_name).startswith("@"):
+                clean_username = user_display_name  # Keep pure clickable username
+            else:
+                clean_username = escape_markdown(user_display_name) # Safe escape for normal names
                 
             score = meta["score"]
             wrong_count = meta["wrong"]
             points = meta["points"]
-            attempted = meta["attempted"]
-            total_time = meta["total_time"]
+            total_time = format_time(meta["total_time"])
             
-            avg_time_str = f"{total_time / attempted:.1f}s" if attempted > 0 else "0.0s"
-            accuracy = (score / attempted * 100) if attempted > 0 else 0.0
-            percentage = (points / total_questions * 100) if total_questions > 0 else 0.0
+            # रोस्ट लॉजिक के लिए स्कोर परसेंटेज निकालना
+            percentage = (points / total_questions_answered * 100) if total_questions_answered > 0 else 0.0
             
-            badge = "[👑 लेजेंड]" if idx == 1 else "[🏹 धनुर्धर]" if idx <= 4 else "[👶 नौसिखिया]"
-            rank_icon = "🥇" if idx == 1 else "🥈" if idx == 2 else "🥉" if idx == 3 else "🎖"
-            percentile = ((total_participants - idx) / total_participants * 100) if total_participants > 1 else 100.0
-            penalty_val = float(wrong_count) * float(db_neg_multiplier)
-            
-            # 🔥 स्मार्ट रोस्ट सिलेक्शन लॉजिक (अब रैंक 1 को हमेशा सम्मान मिलेगा)
+            # 🔥 फिक्स रोस्ट सिलेक्शन: रैंक 1 को हमेशा टॉपर का सम्मान मिलेगा
             if idx == 1:
                 roast_msg = random.choice(roasts_topper)
             elif points < 0:
@@ -2239,53 +2215,43 @@ async def compile_group_leaderboard(chat_id, context):
             else:
                 roast_msg = random.choice(roasts_middle)
                 
-            # स्ट्रिंग फॉर्मेटिंग
-            p_str = f"{rank_icon} {idx}. *{clean_username}* • `{badge}`\n"
-            p_str += f"📊 *स्कोर:* `{points:.2f} / {float(total_questions)}` ({percentage:.1f}%)\n"
-            p_str += f"📈 *परसेंटाइल:* `{percentile:.1f}` | 📝 *अटेम्प्ट:* `{attempted}/{total_questions}`\n"
-            p_str += f"🎯 *Acc:* `{accuracy:.1f}%` | ⏱ *Avg Time:* `{avg_time_str}`\n"
-            p_str += f"✅ `{score}` | ❌ `{wrong_count}` | 🩸 *पेनाल्टी:* `-{penalty_val:.2f}`\n"
-            p_str += f"📢 *{roast_msg}*\n"
-            p_str += f"━━━━━━━━━━━━━━━━━━━━\n\n"
-
-            if idx <= 10:
-                p1_leaderboard += p_str
-            else:
-                p2_leaderboard += p_str
-
-        p2_header = f"📄 *(Page 2/2)*\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            rank_icon = "🥇." if idx == 1 else "🥈." if idx == 2 else "🥉." if idx == 3 else f"{idx}."
+            
+            # Clean layout print without invalid characters or slashes
+            leaderboard += f"{rank_icon} *{clean_username}*\n"
+            leaderboard += f"   Final Score: `{points:.2f} Marks`\n"
+            leaderboard += f"   Right: `{score}`\n"
+            leaderboard += f"   Wrong: `{wrong_count}`\n"
+            leaderboard += f"   Total Time Taken: `{total_time}`\n"
+            leaderboard += f"   📢 *{roast_msg}*\n"  # यहाँ पर रोस्ट मैसेज जुड़ गया
+            leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
         
-        p2_awards = f"🏆 *अवार्ड्स एवं सम्मान* 🏆\n"
-        p2_awards += f"━━━━━━━━━━━━━━━━━━━━\n"
-        p2_awards += f"🐆 *चीता (सबसे तेज़):* ⚡ `{cheetah_user['name']}` ({cheetah_user['time']:.1f}s)\n"
-        p2_awards += f"🐢 *कछुआ (सबसे स्लो):* 🐌 `{kachua_user['name']}` ({kachua_user['time']:.1f}s)\n"
-        p2_awards += f"🙈 *तुक्का सेठ (Max Wrong):* 🩸 `{tukka_user['name']}` ({tukka_user['wrong']} गलत)\n"
-        p2_awards += f"👀 *मूक दर्शक (Max Skip):* 🤐 `{viewer_user['name']}` ({viewer_user['skips']} छोड़े)\n\n"
-        p2_awards += f"🏆 *Congratulations to all participants!*"
-
+        footer = "\n🏆 Congratulations to all participants!"
+        full_message = header + subheader + leaderboard + footer
+        
+        # 🌟 FIX: Library wrapper ko bypass karke raw dictionary payload bheja taaki crash na ho
         share_url = f"https://t.me/{bot_username}?startgroup=quiz_{game['quiz_id']}"
-        kb = [[{"text": "Start Again ✨", "url": share_url, "style": "success"}]]
-
-        # पहला पेज सेंड करें (रैंक 1 से 10)
+        
+        # Raw structure format dictionary injection
+        raw_button = {
+            "text": "Start Again ✨",
+            "url": share_url,
+            "style": "success"  # Hara (Green) rang lagane ke liye. Neela chahiye toh "primary" likhein
+        }
+        
+        # InlineKeyboardMarkup constructor manually object structures feed kar lega
+        kb = [[raw_button]]
+        
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=p1_header + p1_leaderboard, 
-            parse_mode="Markdown"
-        )
-
-        # दूसरा पेज सेंड करें (रैंक 11 से 20 + अवार्ड्स)
-        p2_full_message = p2_header + p2_leaderboard + p2_awards
-        await context.bot.send_message(
-            chat_id=chat_id, 
-            text=p2_full_message, 
+            text=full_message, 
             reply_markup=InlineKeyboardMarkup(kb),
             parse_mode="Markdown"
         )
-
         GROUP_GAMES.pop(chat_id, None)
     except Exception as e:
         logging.error(f"Error in compile_group_leaderboard: {e}")
-        
+                                 
         
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
