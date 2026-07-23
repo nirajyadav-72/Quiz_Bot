@@ -2231,11 +2231,11 @@ async def compile_group_leaderboard(chat_id, context):
             
             # Clean layout print without invalid characters or slashes
             leaderboard += f"{rank_icon} *{clean_username}*\n"
-            leaderboard += f"   ├─> Right: `{score}`\n"
-            leaderboard += f"   ├─> Wrong: `{wrong_count}`\n"
-            leaderboard += f"   ├─> Final Score: `{points:.2f} Marks`\n"
-            leaderboard += f"   ├─> Total Time Taken: `{total_time}`\n"
-            leaderboard += f"   ├─> *{roast_msg}*\n"
+            leaderboard += f"   ➻ Right: `{score}`\n"
+            leaderboard += f"   ➻ Wrong: `{wrong_count}`\n"
+            leaderboard += f"   ➻ Final Score: `{points:.2f} Marks`\n"
+            leaderboard += f"   ➻ Total Time Taken: `{total_time}`\n"
+            leaderboard += f"   ➻ *{roast_msg}*\n"
             leaderboard += f"   🔹 ┈┈┈┈┈┈|┈┈┈┈┈┈ 🔹\n"
         
         footer = "\n🏆 Congratulations to all participants!"
