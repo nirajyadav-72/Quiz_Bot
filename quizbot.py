@@ -2699,6 +2699,107 @@ async def execute_broadcast_callback(update: Update, context: ContextTypes.DEFAU
         # fallback: send a new message
         await context.bot.send_message(chat_id=query.message.chat.id, text=report_text, parse_mode="Markdown")
         
+async def execute_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query:
+        return
+    try:
+        await query.answer()
+    except Exception:
+        pass
+
+    logging.info(f"Broadcast callback triggered by {query.from_user.id}: {query.data}")
+
+    if OWNER_ID is not None and query.from_user.id != OWNER_ID:
+        try:
+            await query.answer("❌ You are not authorized to control this broadcast!", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    parts = query.data.split('_')
+    if len(parts) < 3:
+        try:
+            await query.answer("❌ Invalid broadcast data.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    should_pin = (parts[1] == 'yes')
+    try:
+        target_msg_id = int(parts[2])
+    except ValueError:
+        try:
+            await query.answer("❌ Invalid message id.", show_alert=True)
+        except Exception:
+            pass
+        return
+
+    try:
+        await query.edit_message_text("📢 Initializing broadcast process, please wait....")
+    except Exception:
+        pass
+
+    with sqlite3.connect(DB_FILE, timeout=20) as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT chat_id FROM broadcast_groups")
+            all_chats = cursor.fetchall()
+        except Exception:
+            all_chats = []
+        try:
+            cursor.execute("SELECT chat_id FROM broadcast_users")
+            all_users = cursor.fetchall()
+        except Exception:
+            all_users = []
+
+    g_success = g_fail = u_success = u_fail = 0
+
+    for (chat_id,) in all_chats:
+        try:
+            sent_msg = await context.bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=query.message.chat.id,
+                message_id=target_msg_id
+            )
+            if should_pin and sent_msg and hasattr(sent_msg, "message_id"):
+                try:
+                    await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent_msg.message_id, disable_notification=False)
+                except Exception as e:
+                    logging.warning(f"Pin failed in {chat_id}: {e}")
+            g_success += 1
+            await asyncio.sleep(0.15)
+        except Exception as e:
+            logging.warning(f"Broadcast to group {chat_id} failed: {e}")
+            g_fail += 1
+
+    for (user_id,) in all_users:
+        try:
+            await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=query.message.chat.id,
+                message_id=target_msg_id
+            )
+            u_success += 1
+            await asyncio.sleep(0.15)
+        except Exception as e:
+            logging.warning(f"Broadcast to user {user_id} failed: {e}")
+            u_fail += 1
+
+    report_text = (
+        f"📊 *Global Broadcast Report:*\n\n"
+        f"📌 *Group Pin Status:* {'✅ Pinned' if should_pin else '❌ Not Pinned'}\n\n"
+        f"👥 *Groups:*\n"
+        f"✅ Done: {g_success} | ❌ Failed: {g_fail}\n\n"
+        f"👤 *Private Users:*\n"
+        f"✅ Done: {u_success} | ❌ Failed: {u_fail}\n\n"
+        f"🎯 *Broadcast completed.*"
+    )
+
+    try:
+        await query.edit_message_text(report_text, parse_mode="Markdown")
+    except Exception:
+        await context.bot.send_message(chat_id=query.message.chat.id, text=report_text, parse_mode="Markdown")
 # =====================================================================
 
 async def main():
@@ -2807,6 +2908,7 @@ async def main():
         app.add_handler(CallbackQueryHandler(handle_delete_question, pattern="^delq_"))
         app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
         app.add_handler(CommandHandler("broadcast", broadcast_command))
+        app.add_handler(CallbackQueryHandler(execute_broadcast_callback, pattern="^bcast_"))
         
         # 🔴 Quiz pause/resume handlers
         app.add_handler(CallbackQueryHandler(handle_pause_quiz, pattern="^pausequiz_"))
