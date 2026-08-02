@@ -2564,139 +2564,141 @@ async def owner_status_text_command(update: Update, context: ContextTypes.DEFAUL
         await update.message.reply_text("❌ Error generating groups status details.")
                     
 # broadcast command handler
-# STEP 1: Command Handler - Jo message par reply karne par Yes/No buttons poochega
-@bot.message_handler(commands=['broadcast'])
-def handle_owner_broadcast(message):
-    is_owner = (OWNER_ID and message.from_user.id == OWNER_ID)
-    is_valid_chat = (message.chat.type == 'private' or (SUPPORT_GROUP_ID and message.chat.id == SUPPORT_GROUP_ID))
+# Broadcast command handlers (converted to python-telegram-bot async style)
+# =====================================================================
+
+async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Start the broadcast confirmation (owner only). Usage: reply to a message and run /broadcast"""
+    message = update.message
+    if not message:
+        return
+
+    is_owner = (OWNER_ID is not None and message.from_user.id == OWNER_ID)
+    is_valid_chat = (str(message.chat.type) == 'private' or (SUPPORT_GROUP_ID and message.chat.id == SUPPORT_GROUP_ID))
 
     if not (is_owner and is_valid_chat):
-        try: bot.send_message(message.chat.id, "❌ This command is only valid for the bot owner and in authorized chats.")
-        except Exception: pass
+        await message.reply_text("❌ This command is only valid for the bot owner and in authorized chats.")
         return
 
     if not message.reply_to_message:
-        bot.send_message(
-            message.chat.id, 
-            "⚠️ *उपयोग कैसे करें?*\n"
-            "1. वह टेक्स्ट, फोटो, वीडियो या स्टिकर भेजें जिसे ब्रॉडकास्ट करना है।\n"
-            "2. उस मैसेज पर *Reply* करके लिखें: `/broadcast`", 
+        await message.reply_text(
+            "⚠️ *How to use?*\n"
+            "1. Send the text/photo/video/sticker you want to broadcast.\n"
+            "2. Reply to that message and run `/broadcast`.",
             parse_mode="Markdown"
         )
         return
 
-    # 🎨 Asli Green (Success) aur Red (Danger) Button Styles Ke Sath
-    markup = InlineKeyboardMarkup()
-    markup.row(
-        InlineKeyboardButton(
-            text=" YES (Pin Karein)", 
-            callback_data=f"bcast_yes_{message.reply_to_message.message_id}",
-            style="success"  # 👈 Isse button poora GREEN rang ka dikhega
-        ),
-        InlineKeyboardButton(
-            text="NO (Pin Nahi Karein)", 
-            callback_data=f"bcast_no_{message.reply_to_message.message_id}",
-            style="danger"   # 👈 Isse button poora RED rang ka dikhega
-        )
-    )
+    keyboard = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton(text="✅ YES (Pin)", callback_data=f"bcast_yes_{message.reply_to_message.message_id}"),
+            InlineKeyboardButton(text="❌ NO (Don't Pin)", callback_data=f"bcast_no_{message.reply_to_message.message_id}")
+        ]
+    ])
 
-    bot.send_message(
-        chat_id=message.chat.id,
-        text="🏵️ *क्या आप इस ब्रॉडकास्ट मैसेज को सभी ग्रुप्स में PIN करना चाहते हैं?*",
-        reply_markup=markup,
+    await message.reply_text(
+        "🏵️ *Do you want to PIN this broadcast message in all groups?*",
+        reply_markup=keyboard,
         parse_mode="Markdown"
     )
 
-# STEP 2: Callback Query Handler - Jo button dabaane par actual broadcast shuru karega
-@bot.callback_query_handler(func=lambda call: call.data.startswith(('bcast_yes_', 'bcast_no_')))
-def execute_broadcast_callback(call):
-    # Security Check
-    if OWNER_ID and call.from_user.id != OWNER_ID:
-        bot.answer_callback_query(call.id, "❌ You are not authorized to control this broadcast!", show_alert=True)
+
+async def execute_broadcast_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Executes broadcast when owner clicks YES/NO."""
+    query = update.callback_query
+    if not query:
+        return
+    await query.answer()
+
+    # Authorization check
+    if OWNER_ID is not None and query.from_user.id != OWNER_ID:
+        await query.answer("❌ You are not authorized to control this broadcast!", show_alert=True)
         return
 
-    # Data split karke decision nikalna
-    data_parts = call.data.split('_')
-    should_pin = (data_parts[1] == 'yes')
-    target_msg_id = int(data_parts[2])
+    parts = query.data.split('_')
+    if len(parts) < 3:
+        await query.answer("❌ Invalid broadcast data.", show_alert=True)
+        return
 
-    # 🌟 FIX: Original message ke naye styled buttons ko extract karein
-    original_markup = None
+    should_pin = (parts[1] == 'yes')
     try:
-        # Hum original message ko temporary forward karke check karenge ki usme kya markup tha
-        orig_msg = bot.forward_message(chat_id=call.message.chat.id, from_chat_id=call.message.chat.id, message_id=target_msg_id)
-        if orig_msg and hasattr(orig_msg, 'reply_markup'):
-            original_markup = orig_msg.reply_markup
-        # Temporary forward message ko delete karein
-        bot.delete_message(chat_id=call.message.chat.id, message_id=orig_msg.message_id)
+        target_msg_id = int(parts[2])
+    except ValueError:
+        await query.answer("❌ Invalid message id.", show_alert=True)
+        return
+
+    # Update status message to show processing
+    try:
+        await query.edit_message_text("📢 **Initializing broadcast process, please wait....**", parse_mode="Markdown")
     except Exception:
+        # ignore edit failures
         pass
 
-    # Status message me badle
-    bot.edit_message_text(
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        text="📢 **Initializing broadcast process, please wait....**",
-        parse_mode="Markdown"
-    )
-
+    # Read the chat and user lists from the DB (use broadcast_* tables created by init_db)
     with sqlite3.connect(DB_FILE, timeout=20) as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT chat_id FROM groups")
-        all_chats = cursor.fetchall()
-        cursor.execute("SELECT user_id FROM users")
-        all_users = cursor.fetchall()
+        try:
+            cursor.execute("SELECT chat_id FROM broadcast_groups")
+            all_chats = cursor.fetchall()
+        except Exception:
+            all_chats = []
+        try:
+            cursor.execute("SELECT chat_id FROM broadcast_users")
+            all_users = cursor.fetchall()
+        except Exception:
+            all_users = []
 
-    g_success, g_fail = 0, 0
-    u_success, u_fail = 0, 0
+    g_success = g_fail = u_success = u_fail = 0
 
-    # 👥 1. ग्रुप्स में ब्रॉडकास्ट
+    # Broadcast to groups
     for (chat_id,) in all_chats:
         try:
-            # 🌟 FIX: reply_markup=original_markup pass kiya taaki styled buttons bhi copy ho sakein
-            sent_msg = bot.copy_message(
-                chat_id=chat_id, 
-                from_chat_id=call.message.chat.id, 
-                message_id=target_msg_id,
-                reply_markup=original_markup
+            sent_msg = await context.bot.copy_message(
+                chat_id=chat_id,
+                from_chat_id=query.message.chat.id,
+                message_id=target_msg_id
             )
-            
-            if should_pin and sent_msg and hasattr(sent_msg, 'message_id'):
+            if should_pin and sent_msg and hasattr(sent_msg, "message_id"):
                 try:
-                    bot.pin_chat_message(chat_id=chat_id, message_id=sent_msg.message_id, disable_notification=False)
-                except Exception: pass
-
+                    await context.bot.pin_chat_message(chat_id=chat_id, message_id=sent_msg.message_id, disable_notification=False)
+                except Exception:
+                    pass
             g_success += 1
-            time.sleep(0.15)  
-        except Exception: g_fail += 1
+            await asyncio.sleep(0.15)
+        except Exception:
+            g_fail += 1
 
-    # 👤 2. प्राइवेट यूज़र्स में ब्रॉडकास्ट
+    # Broadcast to private users
     for (user_id,) in all_users:
         try:
-            # 🌟 FIX: Yahan bhi reply_markup=original_markup jod diya hai
-            bot.copy_message(
-                chat_id=user_id, 
-                from_chat_id=call.message.chat.id, 
-                message_id=target_msg_id,
-                reply_markup=original_markup
+            await context.bot.copy_message(
+                chat_id=user_id,
+                from_chat_id=query.message.chat.id,
+                message_id=target_msg_id
             )
             u_success += 1
-            time.sleep(0.15)  
-        except Exception: u_fail += 1
+            await asyncio.sleep(0.15)
+        except Exception:
+            u_fail += 1
 
-    # Report Card print karein
-    bot.edit_message_text(
-        chat_id=call.message.chat.id, 
-        message_id=call.message.message_id, 
-        text=f"📊 *Global Broadcast Report:*\n\n"
-             f"📌 *Group Pin Status:* {'✅ Pinned' if should_pin else '❌ Not Pinned'}\n\n"
-             f"👥 *group's:*\n"
-             f"✅ **done: {g_success}** | ❌ **Undone: {g_fail}**\n\n"
-             f"👤 *Private User's:*\n"
-             f"✅ **done: {u_success}** | ❌ **Undone: {u_fail}**\n\n"
-             f"🎯 *Broadcast completed successfully!*", 
-        parse_mode="Markdown"
+    # Final report
+    report_text = (
+        f"📊 *Global Broadcast Report:*\n\n"
+        f"📌 *Group Pin Status:* {'✅ Pinned' if should_pin else '❌ Not Pinned'}\n\n"
+        f"👥 *Groups:*\n"
+        f"✅ Done: {g_success} | ❌ Failed: {g_fail}\n\n"
+        f"👤 *Private Users:*\n"
+        f"✅ Done: {u_success} | ❌ Failed: {u_fail}\n\n"
+        f"🎯 *Broadcast completed.*"
     )
+
+    try:
+        # Try editing original query message with summary
+        await query.edit_message_text(report_text, parse_mode="Markdown")
+    except Exception:
+        # fallback: send a new message
+        await context.bot.send_message(chat_id=query.message.chat.id, text=report_text, parse_mode="Markdown")
+        
 # =====================================================================
 
 async def main():
