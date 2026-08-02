@@ -2800,6 +2800,65 @@ async def execute_broadcast_callback(update: Update, context: ContextTypes.DEFAU
         await query.edit_message_text(report_text, parse_mode="Markdown")
     except Exception:
         await context.bot.send_message(chat_id=query.message.chat.id, text=report_text, parse_mode="Markdown")
+
+# ⚡ send message to support group (only use owner)
+async def send_to_support_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Owner-only: In private chat reply to a message and copy it (with buttons if any) to SUPPORT_GROUP_ID."""
+    try:
+        message = update.message
+        if not message:
+            return
+
+        # Owner-only guard
+        if OWNER_ID is None or message.from_user.id != OWNER_ID:
+            await message.reply_text("❌ Unauthorized — this command is only for the bot owner.")
+            return
+
+        # Ensure used in private chat
+        chat = message.chat
+        is_private = str(chat.type) == "private" or (hasattr(chat.type, "value") and chat.type.value == "private")
+        if not is_private:
+            await message.reply_text("⚠️ This command works only in a private chat. Reply to the message here and send /send.")
+            return
+
+        # Ensure support group id configured
+        if not SUPPORT_GROUP_ID:
+            await message.reply_text("❌ SUPPORT_GROUP_ID is not configured. Set SUPPORT_GROUP_ID in the .env first.")
+            return
+
+        # Ensure the user replied to a message
+        if not message.reply_to_message:
+            await message.reply_text("❗ Please reply to the message (text/photo/video/sticker/etc.) you want to send to the support group, then send /send.")
+            return
+
+        target_msg = message.reply_to_message
+
+        # If the original message has an inline keyboard or other reply_markup, pass it through.
+        reply_markup = getattr(target_msg, "reply_markup", None)
+
+        try:
+            # copy_message preserves content; pass reply_markup so buttons are copied too (if present).
+            await context.bot.copy_message(
+                chat_id=SUPPORT_GROUP_ID,
+                from_chat_id=target_msg.chat.id,
+                message_id=target_msg.message_id,
+                reply_markup=reply_markup
+            )
+            await message.reply_text("✅ Message successfully sent to the support group (buttons preserved if present).")
+        except Exception as e:
+            logging.error(f"Failed to send message to support group ({SUPPORT_GROUP_ID}): {e}", exc_info=True)
+            # Friendly error to the user (likely bot missing from group or missing permissions)
+            await message.reply_text(
+                "❌ Could not send the message to the support group. "
+                "Ensure the bot is a member of the configured support group and has permission to send messages."
+            )
+
+    except Exception as e:
+        logging.error(f"Error in send_to_support_group: {e}", exc_info=True)
+        try:
+            await update.message.reply_text("❌ An unexpected error occurred. Please try again.")
+        except Exception:
+            pass
 # =====================================================================
 
 async def main():
@@ -2909,6 +2968,7 @@ async def main():
         app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
         app.add_handler(CommandHandler("broadcast", broadcast_command))
         app.add_handler(CallbackQueryHandler(execute_broadcast_callback, pattern="^bcast_"))
+        app.add_handler(CommandHandler("send", send_to_support_group))
         
         # 🔴 Quiz pause/resume handlers
         app.add_handler(CallbackQueryHandler(handle_pause_quiz, pattern="^pausequiz_"))
