@@ -2018,8 +2018,8 @@ async def send_next_group_poll(chat_id, context):
             logging.info(f"No answers for Q{game['current_q'] + 1}. Count: {game['consecutive_no_answers']}")
             
             # 🔴 AUTO-PAUSE after 2 consecutive questions with no answers
-            if game["consecutive_no_answers"] >= 2:
-                game["quiz_paused"] = False
+            if game["consecutive_no_answers"] >= 500:
+                game["quiz_paused"] = True
                 
                 pause_msg = f"🔐 The quiz '*{escape_markdown(quiz_title)}*' was paused because nobody was answering"
                 
