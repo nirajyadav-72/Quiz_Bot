@@ -36,6 +36,9 @@ DB_FILE = "quiz_bot.db"
 # Global dictionary for active group games memory
 GROUP_GAMES = {}
 
+# Auto-runner instance (will be initialized in main)
+AUTO_RUNNER = None
+
 # ====================================================================
 # 🔥 FULLY OPERATIONAL GLOBAL CONVERSATION STATES (AUTOMATIC NO-OVERLAP SEQUENCE)
 # ====================================================================
