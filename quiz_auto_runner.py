@@ -88,7 +88,7 @@ class QuizAutoRunner:
                 f"⏱️ *Timer:* {time_display} per question\n"
                 f"📉 *Negative Marking:* {neg_display}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"👇 *Click 'Ready to Join' to participate!*\n"
+                f"👇 *Click 'I am ready!' to participate!*\n"
                 f"⏳ *Minimum 2 players needed to start*"
             )
             
@@ -153,6 +153,7 @@ class QuizAutoRunner:
                 await asyncio.sleep(2)
             
             # Timeout - show message
+            ready_count = len(game.get("ready_users", set()))
             if ready_count < 2:
                 await self.context.bot.send_message(
                     chat_id=self.support_group_id,
@@ -166,7 +167,7 @@ class QuizAutoRunner:
             self.logger.error(f"❌ Error waiting for players: {e}")
             return False
     
-   async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
+    async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
         """Automatically run a complete quiz"""
         try:
             # Step 1: Announce quiz
@@ -223,7 +224,7 @@ class QuizAutoRunner:
                 # Import the quiz sending function
                 from quizbot import send_next_group_poll
                 
-                # 🔥 FIX: Create task instead of await
+                # 🔥 FIX: Create task instead of await - THIS IS THE KEY FIX!
                 asyncio.create_task(send_next_group_poll(self.support_group_id, self.context))
                 
             self.logger.info(f"✅ Quiz {quiz_id} auto-run started")
