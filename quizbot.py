@@ -2979,6 +2979,8 @@ async def main():
         app.add_handler(CommandHandler("quizzes", quizzes_command))
         app.add_handler(CommandHandler("stop", stop_quiz))
         app.add_handler(CommandHandler("status", owner_status_text_command))
+        # 🔥 NEW: Add auto-runner status command
+        app.add_handler(CommandHandler("runnerstatus", auto_runner_status))
         
         app.add_handler(new_quiz_handler)
         app.add_handler(quiz_edit_flow_handler)
