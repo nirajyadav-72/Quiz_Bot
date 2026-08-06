@@ -166,7 +166,7 @@ class QuizAutoRunner:
             self.logger.error(f"❌ Error waiting for players: {e}")
             return False
     
-  async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
+   async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
         """Automatically run a complete quiz"""
         try:
             # Step 1: Announce quiz
