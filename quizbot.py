@@ -3013,6 +3013,14 @@ async def main():
         logging.info("Starting Quiz Bot polling...")
         await app.initialize()
         await app.start()
+        
+        # 🔥 Initialize Auto-Runner System
+        if SUPPORT_GROUP_ID:
+            AUTO_RUNNER = await init_auto_runner(app, SUPPORT_GROUP_ID, GROUP_GAMES)
+            logging.info(f"✅ Auto-Runner System Started - Running quizzes in Group: {SUPPORT_GROUP_ID}")
+        else:
+            logging.warning("⚠️ SUPPORT_GROUP_ID not configured - Auto-Runner disabled")
+        
         await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
         
         # Bot ko running state me rakhne ke liye infinite event wait loop
