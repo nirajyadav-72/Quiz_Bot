@@ -2806,6 +2806,33 @@ async def execute_broadcast_callback(update: Update, context: ContextTypes.DEFAU
     except Exception:
         await context.bot.send_message(chat_id=query.message.chat.id, text=report_text, parse_mode="Markdown")
 
+# 🔥 NEW AUTO-RUNNER STATUS COMMAND
+async def auto_runner_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Check auto-runner status (owner only)"""
+    try:
+        if OWNER_ID is None or update.message.from_user.id != OWNER_ID:
+            await update.message.reply_text("❌ Unauthorized")
+            return
+        
+        if not AUTO_RUNNER:
+            await update.message.reply_text("❌ Auto-Runner not initialized")
+            return
+        
+        status = await AUTO_RUNNER.get_runner_status()
+        
+        status_text = (
+            f"🤖 *Quiz Auto-Runner Status*\n\n"
+            f"📊 *Total Quizzes:* {status['total_quizzes']}\n"
+            f"🎮 *Currently Running:* {status['current_running'] or 'None'}\n"
+            f"👥 *Players Joined:* {status['players_joined']}\n"
+            f"✅ *Support Group:* {'Configured' if status['group_configured'] else 'Not Set'}\n"
+            f"⏱️ *Last Check:* {status['timestamp']}"
+        )
+        
+        await update.message.reply_text(status_text, parse_mode="Markdown")
+    except Exception as e:
+        logging.error(f"Error in auto_runner_status: {e}")
+        
 # ⚡ send message to support group (only use owner)
 async def send_to_support_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Owner-only: In private chat reply to a message and copy it (with buttons if any) to SUPPORT_GROUP_ID."""
