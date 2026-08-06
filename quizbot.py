@@ -18,6 +18,8 @@ from telegram.ext import (
 )
 from telegram.error import NetworkError
 from telegram.request import HTTPXRequest
+# ✨ Import Auto-Runner
+from quiz_auto_runner import init_auto_runner
 
 # Enable Logging
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
