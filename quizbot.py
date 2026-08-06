@@ -1868,83 +1868,74 @@ async def stop_quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
 
 async def send_next_group_poll(chat_id, context):
+    """Send the next quiz question as a poll to the group"""
     try:
         game = GROUP_GAMES.get(chat_id)
         if not game:
+            logging.warning(f"Game not found for chat {chat_id}")
             return
         
         # Check if quiz is paused
         if game.get("quiz_paused"):
+            logging.info(f"Quiz paused for chat {chat_id}")
             return
             
-        qid = game["quiz_id"]
+        quiz_id = game["quiz_id"]
         
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
-        # FIX 3: fetchone() null ho sakta hai agar quiz delete ho gayi ho ya ID galat ho
-        cursor.execute("SELECT title FROM quizzes WHERE quiz_id = ?", (qid,))
-        quiz_title_data = cursor.fetchone()
-        if not quiz_title_data:
-            logging.error(f"Quiz title not found for quiz_id: {qid}")
+        # Get quiz details
+        cursor.execute("SELECT title, timer, negative_value FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+        quiz_data = cursor.fetchone()
+        if not quiz_data:
+            logging.error(f"Quiz {quiz_id} not found")
             conn.close()
             return
-        quiz_title = quiz_title_data[0]
         
-        cursor.execute("SELECT timer FROM quizzes WHERE quiz_id = ?", (qid,))
-        timer_data = cursor.fetchone()
+        quiz_title, timer, negative_value = quiz_data
         
-        cursor.execute("SELECT question_text, options, correct_answer, pre_message, explanation FROM questions WHERE quiz_id = ?", (qid,))
+        # Get all questions
+        cursor.execute("SELECT question_text, options, correct_answer, pre_message, explanation FROM questions WHERE quiz_id = ?", (quiz_id,))
         questions = cursor.fetchall()
         conn.close()
         
-        if not timer_data or not questions:
-            logging.error(f"Quiz data not found for quiz_id: {qid}")
-            return
-        
-        # ⚡ फिक्स 1: सारे सवाल खत्म होने पर डेटा तुरंत क्लियर करें ताकि लीडरबोर्ड के बाद नया टास्क न बने
+        # Check if all questions completed
         if game["current_q"] >= len(questions):
             await compile_group_leaderboard(chat_id, context)
             GROUP_GAMES.pop(chat_id, None)
             return
 
-        # [0] to extract correct integer from database tuple
-        raw_timer = timer_data[0] if (timer_data and isinstance(timer_data, tuple)) else 30
-        
-        # 🕒 SAFETY CHECK: Telegram minimum 10 seconds demand karta hai
-        timer = raw_timer if raw_timer >= 10 else 10
-        
         q = questions[game["current_q"]]
         q_text, options_json, correct_ans, pre_msg, explanation = q
         options = json.loads(options_json)
         correct_idx = options.index(correct_ans)
         
-        # 📢 Context (pre_msg) भेजने के दौरान नेटवर्क एरर सुरक्षा
+        # Send pre-message if exists
         if pre_msg:
             try:
                 await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
                 await asyncio.sleep(1)
-            except NetworkError as ne:
-                logging.warning(f"Context message failed due to network: {ne}. Continuing to poll.")
+            except Exception as e:
+                logging.warning(f"Context message failed: {e}")
 
-        # 🌟 STATE CHECKS BEFORE SENDING
+        # Check quiz is still active
         if chat_id not in GROUP_GAMES or GROUP_GAMES[chat_id].get("quiz_paused"):
             return
 
         game["question_start_times"][game["current_q"]] = datetime.now()
         game["start_time"] = datetime.now()
         
-        # FIX 8: explanation handling
+        # Clean explanation
         clean_explanation = explanation.strip() if explanation and str(explanation).strip() else None
         
-        # ====================================================================
-        # 🔥 FIX: RETRY LOOP FOR POLL SENDING (TIMED OUT ERROR PREVENTION)
-        # ====================================================================
+        # Send poll with retry
         poll_msg = None
         max_retries = 3
+        raw_timer = timer if timer >= 10 else 10
+        
         for attempt in range(max_retries):
             try:
-                # 🚀 FINAL FIXED POLL WITH RETRY PROTECTION
                 poll_msg = await context.bot.send_poll(
                     chat_id=chat_id, 
                     question=f"[{game['current_q'] + 1}/{len(questions)}] {q_text}",
@@ -1953,32 +1944,29 @@ async def send_next_group_poll(chat_id, context):
                     correct_option_id=correct_idx,
                     explanation=clean_explanation, 
                     is_anonymous=False,
-                    open_period=timer
+                    open_period=raw_timer
                 )
-                break  # अगर पोल सफलतापूर्वक चला गया, तो लूप से बाहर निकलें
+                break
             except NetworkError as ne:
-                logging.error(f"Attempt {attempt + 1} failed sending poll to {chat_id}: {ne}")
+                logging.error(f"Attempt {attempt + 1} failed sending poll: {ne}")
                 if attempt < max_retries - 1:
-                    logging.info("Network error encountered. Retrying poll in 4 seconds...")
-                    await asyncio.sleep(4)  # दोबारा कोशिश करने से पहले थोड़ा रुकें
+                    await asyncio.sleep(4)
                 else:
-                    logging.error("All retries failed for sending poll. Pausing quiz to protect runtime.")
+                    logging.error("All retries failed for poll")
                     game["quiz_paused"] = True
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text="⚠️ *Network problem encountered!* The quiz has been automatically paused. Use /resume to try again.",
+                        text="⚠️ Network problem! Quiz paused.",
                         parse_mode="Markdown"
                     )
                     return
         
-        # Safety fallback if poll was somehow not created
         if not poll_msg:
+            logging.error("Failed to create poll")
             return
-        # ====================================================================
         
-        # Store poll message ID for later closing
+        # Store poll info
         game["poll_message_ids"][game["current_q"]] = poll_msg.message_id
-        
         game["poll_map"][poll_msg.poll.id] = {
             "correct_idx": correct_idx, 
             "chat_id": chat_id,
@@ -1986,25 +1974,32 @@ async def send_next_group_poll(chat_id, context):
             "question_index": game["current_q"]
         }
         
-        # ⚡ फिक्स 2: सीधे sleep करने के बजाय इस रनिंग टास्क को ट्रैक करें ताकि बीच में Cancel किया जा सके
+        # Wait for timer
         try:
-            game["current_task"] = asyncio.current_task()
-            await asyncio.sleep(timer)
+            await asyncio.sleep(raw_timer)
         except asyncio.CancelledError:
-            # अगर /stop कमांड दबाया जाएगा, तो कोड यहीं रुक जाएगा और अगला सवाल कभी नहीं भेजेगा
-            logging.info(f"Quiz sleep task cancelled for chat {chat_id}")
+            logging.info(f"Quiz cancelled for chat {chat_id}")
             return
         
-        # Check if quiz is still active after sleep
+        # Check if quiz still active
         if chat_id not in GROUP_GAMES:
             return
             
         game = GROUP_GAMES[chat_id]
-        
         if game.get("quiz_paused"):
             return
 
-        # Check if any user answered this question
+        # Stop poll
+        try:
+            if game["current_q"] in game["poll_message_ids"]:
+                await context.bot.stop_poll(
+                    chat_id=chat_id, 
+                    message_id=game["poll_message_ids"][game["current_q"]]
+                )
+        except Exception:
+            pass
+        
+        # Check if answers received
         answers_received = False
         if "user_answers" in game:
             for uid, user_answers in game["user_answers"].items():
@@ -2012,32 +2007,19 @@ async def send_next_group_poll(chat_id, context):
                     answers_received = True
                     break
         
-        try:
-            if not poll_msg.poll.is_closed:
-                await context.bot.stop_poll(chat_id=chat_id, message_id=game["poll_message_ids"][game["current_q"]])
-        except Exception:
-            pass  
-        
         if not answers_received:
             game["consecutive_no_answers"] += 1
-            logging.info(f"No answers for Q{game['current_q'] + 1}. Count: {game['consecutive_no_answers']}")
-            
-            # 🔴 AUTO-PAUSE after 2 consecutive questions with no answers
             if game["consecutive_no_answers"] >= 500:
                 game["quiz_paused"] = True
-                
-                pause_msg = f"🔐 The quiz '*{escape_markdown(quiz_title)}*' was paused because nobody was answering"
-                
+                pause_msg = f"🔐 Quiz paused - nobody answering"
                 keyboard = [
-                    [InlineKeyboardButton("Resume Quiz", callback_data=f"pausequiz_{chat_id}")],
-                    [InlineKeyboardButton("Stop Quiz", callback_data=f"stopquiz_{chat_id}")]
+                    [InlineKeyboardButton("Resume", callback_data=f"pausequiz_{chat_id}")],
+                    [InlineKeyboardButton("Stop", callback_data=f"stopquiz_{chat_id}")]
                 ]
-                
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=pause_msg,
-                    reply_markup=InlineKeyboardMarkup(keyboard),
-                    parse_mode="Markdown"
+                    reply_markup=InlineKeyboardMarkup(keyboard)
                 )
                 return
         else:
@@ -2045,13 +2027,13 @@ async def send_next_group_poll(chat_id, context):
         
         game["current_q"] += 1
         
-        # ⚡ फिक्स 3: अगला टास्क शुरू करने से पहले दोबारा पक्का करें कि गेम अभी भी एक्टिव है
+        # Send next question
         if chat_id in GROUP_GAMES and not game.get("quiz_paused"):
             asyncio.create_task(send_next_group_poll(chat_id, context))
             
     except Exception as e:
         logging.error(f"Error in send_next_group_poll: {e}", exc_info=True)
-                    
+        
         
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
