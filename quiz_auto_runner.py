@@ -166,7 +166,7 @@ class QuizAutoRunner:
             self.logger.error(f"❌ Error waiting for players: {e}")
             return False
     
-    async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
+  async def auto_run_quiz(self, quiz_id, title, description, question_count, timer, negative_value):
         """Automatically run a complete quiz"""
         try:
             # Step 1: Announce quiz
@@ -189,7 +189,7 @@ class QuizAutoRunner:
                 self.GROUP_GAMES.pop(self.support_group_id, None)
                 return False
             
-            # Step 3: Start the quiz (import send_next_group_poll from main)
+            # Step 3: Start the quiz
             game = self.GROUP_GAMES.get(self.support_group_id)
             if game:
                 game["quiz_started"] = True
@@ -223,10 +223,10 @@ class QuizAutoRunner:
                 # Import the quiz sending function
                 from quizbot import send_next_group_poll
                 
-                # Start sending questions
-                await send_next_group_poll(self.support_group_id, self.context)
+                # 🔥 FIX: Create task instead of await
+                asyncio.create_task(send_next_group_poll(self.support_group_id, self.context))
                 
-            self.logger.info(f"✅ Quiz {quiz_id} auto-run completed")
+            self.logger.info(f"✅ Quiz {quiz_id} auto-run started")
             return True
             
         except Exception as e:
